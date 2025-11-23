@@ -27,46 +27,18 @@
                     @change="handleMethodChange"
                 >
                     <option value="">Выберите метод</option>
-                    <optgroup label="Отправка сообщений">
-                        <option value="sendMessage">Отправить сообщение</option>
-                        <option value="sendDice">🎲 Отправить кубик</option>
-                        <option value="sendPoll">📊 Отправить опрос</option>
-                        <option value="sendVenue">📍 Отправить локацию</option>
-                        <option value="sendContact">👤 Отправить контакт</option>
-                    </optgroup>
-                    <optgroup label="Медиа">
-                        <option value="sendPhoto">📷 Фото</option>
-                        <option value="sendVideo">🎥 Видео</option>
-                        <option value="sendDocument">📄 Документ</option>
-                        <option value="sendAudio">🎵 Аудио</option>
-                        <option value="sendVoice">🎤 Голосовое</option>
-                        <option value="sendVideoNote">🎬 Видео-кружок</option>
-                        <option value="sendAnimation">🎞️ Анимация/GIF</option>
-                        <option value="sendSticker">😊 Стикер</option>
-                        <option value="sendLocation">📍 Локация</option>
-                        <option value="sendMediaGroup">🖼️ Группа медиа</option>
-                    </optgroup>
-                    <optgroup label="Редактирование">
-                        <option value="editMessageText">Редактировать текст</option>
-                        <option value="editMessageCaption">Редактировать подпись</option>
-                    </optgroup>
-                    <optgroup label="Управление">
-                        <option value="deleteMessage">Удалить сообщение</option>
-                        <option value="pinChatMessage">Закрепить сообщение</option>
-                        <option value="unpinChatMessage">Открепить сообщение</option>
-                        <option value="sendChatAction">⏳ Индикатор действия</option>
-                    </optgroup>
-                    <optgroup label="Кнопки">
-                        <option value="replyKeyboard">Reply-кнопки</option>
-                        <option value="inlineKeyboard">Inline кнопки</option>
-                    </optgroup>
-                    <optgroup label="Специальные функции">
-                        <option value="question">Задать вопрос</option>
-                        <option value="managerChat">💬 Чат с менеджером</option>
-                        <option value="apiRequest">🌐 API Запрос</option>
-                        <option value="apiButtons">🔘 API Кнопки</option>
-                        <option value="apiMediaGroup">🖼️ API Группа медиа</option>
-                        <option value="assistant">🤖 AI Ассистент (ChatGPT)</option>
+                    <optgroup
+                        v-for="group in availableMethodsGroups"
+                        :key="group.label"
+                        :label="group.label"
+                    >
+                        <option
+                            v-for="method in group.methods"
+                            :key="method.value"
+                            :value="method.value"
+                        >
+                            {{ method.label }}
+                        </option>
                     </optgroup>
                 </select>
             </div>
@@ -821,8 +793,9 @@
 </template>
 
 <script>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { validateMethodData, telegramApiValidation } from '../../utils/telegramApiValidation.js'
+import { blockMethodsManager } from '../../utils/BlockMethodsManager.js'
 import FilePickerButton from './FilePickerButton.vue'
 
 export default {
@@ -854,6 +827,11 @@ export default {
 
         const methodData = ref({})
         const errors = ref({})
+
+        // Получаем доступные методы из менеджера
+        const availableMethodsGroups = computed(() => {
+            return blockMethodsManager.getMethodsForSelect()
+        })
 
         // Инициализация данных метода по умолчанию
         const initMethodData = (method) => {
@@ -1186,6 +1164,7 @@ export default {
             methodData,
             errors,
             isValid,
+            availableMethodsGroups,
             validateField,
             validatePollOptions,
             validateKeyboard,

@@ -300,7 +300,7 @@ class BotController extends Controller
                             $inlineRow[] = $inlineButton;
                         }
                         if (!empty($inlineRow)) {
-                            $inlineKeyboard[] = $inlineRow;
+                        $inlineKeyboard[] = $inlineRow;
                         }
                     }
                     $result = $telegraph->message($methodData['text'] ?? 'Выберите действие:')
@@ -525,9 +525,9 @@ class BotController extends Controller
                         }
                     }
                     try {
-                        $result = $telegraph->pinChatMessageApi(
+                    $result = $telegraph->pinChatMessageApi(
                             $messageId,
-                            $methodData['disable_notification'] ?? false
+                        $methodData['disable_notification'] ?? false
                         );
                     } catch (\Exception $e) {
                         // Если сообщение не найдено, даем более понятное сообщение

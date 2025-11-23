@@ -1,9 +1,22 @@
 <template>
-    <div class="bot-diagram-container bg-background border border-border rounded-lg overflow-hidden relative">
+    <div 
+        class="bot-diagram-container bg-background border border-border rounded-lg overflow-auto relative"
+        :class="{ 'cursor-grabbing': isDragging, 'cursor-grab': !isDragging && isSpacePressed, 'cursor-move': isSpacePressed && !isDragging }"
+        @wheel="handleWheel"
+        @mousedown="handleMouseDown"
+        @contextmenu.prevent
+        ref="containerRef"
+    >
         <div 
             ref="diagramContainer" 
-            class="diagram-canvas w-full h-full min-h-[600px] relative"
-            :style="{ transform: `scale(${zoom})`, transformOrigin: 'top left' }"
+            class="diagram-canvas relative"
+            :style="{ 
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`, 
+                transformOrigin: 'top left',
+                width: `${svgWidth}px`,
+                height: `${svgHeight}px`,
+                minHeight: '600px'
+            }"
         >
             <!-- SVG для связей между блоками -->
             <svg 
@@ -72,7 +85,7 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import DiagramBlock from './DiagramBlock.vue'
 
 export default {
@@ -94,9 +107,17 @@ export default {
             default: 1
         }
     },
-    emits: ['block-move', 'block-click', 'block-settings', 'block-delete'],
+    emits: ['block-move', 'block-click', 'block-settings', 'block-delete', 'zoom-change'],
     setup(props, { emit }) {
         const diagramContainer = ref(null)
+        const containerRef = ref(null)
+        
+        // Состояние для перетаскивания области диаграммы
+        const isDragging = ref(false)
+        const dragStart = ref({ x: 0, y: 0 })
+        const scrollStart = ref({ left: 0, top: 0 })
+        const isSpacePressed = ref(false)
+        const panOffset = ref({ x: 0, y: 0 })
 
         // Константы размеров блока
         const BLOCK_WIDTH = 120
@@ -213,12 +234,167 @@ export default {
             emit('block-move', data)
         }
 
+        // Обработка колесика мыши для zoom
+        const handleWheel = (event) => {
+            // Проверяем, зажата ли клавиша Ctrl (или Cmd на Mac)
+            if (event.ctrlKey || event.metaKey) {
+                event.preventDefault()
+                event.stopPropagation()
+                
+                // Определяем направление прокрутки
+                // deltaY > 0 означает прокрутку вниз (уменьшение)
+                // deltaY < 0 означает прокрутку вверх (увеличение)
+                const delta = event.deltaY > 0 ? -0.05 : 0.05
+                const newZoom = Math.max(0.5, Math.min(2, props.zoom + delta))
+                
+                // Округляем до 2 знаков после запятой для плавности
+                const roundedZoom = Math.round(newZoom * 100) / 100
+                
+                // Эмитим событие только если zoom изменился
+                if (roundedZoom !== props.zoom) {
+                    emit('zoom-change', roundedZoom)
+                }
+            }
+            // Если Ctrl не зажат, разрешаем обычную прокрутку
+        }
+
+        // Обработка нажатия клавиш
+        const handleKeyDown = (event) => {
+            if (event.code === 'Space' && !isSpacePressed.value) {
+                isSpacePressed.value = true
+                event.preventDefault()
+            }
+        }
+        
+        const handleKeyUp = (event) => {
+            if (event.code === 'Space') {
+                isSpacePressed.value = false
+                if (isDragging.value) {
+                    isDragging.value = false
+                }
+            }
+        }
+
+        // Обработка начала перетаскивания области диаграммы
+        const handleMouseDown = (event) => {
+            if (!containerRef.value) {
+                return
+            }
+            
+            // Перетаскивание только при нажатии на пустую область (не на блок)
+            const target = event.target
+            
+            // Проверяем, что клик не на блоке или его дочерних элементах
+            const isBlock = target.closest('.diagram-block')
+            // Проверяем, что клик не на SVG (связи между блоками)
+            const isSvg = target.tagName === 'svg' || target.closest('svg')
+            // Проверяем, что клик не на пустом состоянии
+            const isEmptyState = target.closest('.flex.items-center.justify-center')
+            
+            // Начинаем перетаскивание если:
+            // 1. Средняя кнопка мыши (любая область, даже на блоке)
+            // 2. Правая кнопка мыши (любая область)
+            // 3. Левая кнопка мыши при зажатой Space (любая область)
+            // 4. Левая кнопка мыши на пустой области (не на блоке, не на SVG, не на пустом состоянии)
+            const canDrag = event.button === 1 || 
+                          event.button === 2 || 
+                          (event.button === 0 && isSpacePressed.value) ||
+                          (event.button === 0 && !isBlock && !isSvg && !isEmptyState)
+            
+            if (canDrag) {
+                // Важно: предотвращаем стандартное поведение и останавливаем всплытие ПЕРЕД установкой флага
+                event.preventDefault()
+                event.stopPropagation()
+                
+                isDragging.value = true
+                dragStart.value = {
+                    x: event.clientX,
+                    y: event.clientY
+                }
+                // Сохраняем текущее смещение панорамирования
+                scrollStart.value = {
+                    left: panOffset.value.x,
+                    top: panOffset.value.y
+                }
+                
+                // Блокируем контекстное меню при правой кнопке мыши
+                if (event.button === 2) {
+                    event.preventDefault()
+                }
+                
+                // Устанавливаем курсор на весь документ
+                document.body.style.cursor = 'grabbing'
+                document.body.style.userSelect = 'none'
+            }
+        }
+
+        // Обработка движения мыши при перетаскивании
+        const handleMouseMove = (event) => {
+            // Проверяем, что перетаскивание активно
+            if (!isDragging.value) {
+                return
+            }
+            
+            // Вычисляем смещение по осям X и Y
+            const deltaX = event.clientX - dragStart.value.x
+            const deltaY = event.clientY - dragStart.value.y
+            
+            // Обновляем смещение панорамирования
+            // При перетаскивании вправо (deltaX > 0) контент должен двигаться вправо (panOffset.x увеличивается)
+            // При перетаскивании влево (deltaX < 0) контент должен двигаться влево (panOffset.x уменьшается)
+            panOffset.value = {
+                x: scrollStart.value.left + deltaX,
+                y: scrollStart.value.top + deltaY
+            }
+        }
+
+        // Обработка окончания перетаскивания
+        const handleMouseUp = (event) => {
+            if (isDragging.value) {
+                isDragging.value = false
+                
+                // Восстанавливаем курсор и выделение текста
+                document.body.style.cursor = ''
+                document.body.style.userSelect = ''
+                
+                if (event) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                }
+            }
+        }
+        
+        // Обработка глобальных событий мыши и клавиатуры для корректной работы перетаскивания
+        onMounted(() => {
+            document.addEventListener('mousemove', handleMouseMove)
+            document.addEventListener('mouseup', handleMouseUp)
+            window.addEventListener('keydown', handleKeyDown)
+            window.addEventListener('keyup', handleKeyUp)
+        })
+        
+        onUnmounted(() => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+            window.removeEventListener('keydown', handleKeyDown)
+            window.removeEventListener('keyup', handleKeyUp)
+        })
+
         return {
             diagramContainer,
+            containerRef,
             connections,
             svgWidth,
             svgHeight,
-            handleBlockMove
+            handleBlockMove,
+            handleWheel,
+            isDragging,
+            isSpacePressed,
+            panOffset,
+            handleMouseDown,
+            handleMouseMove,
+            handleMouseUp,
+            handleKeyDown,
+            handleKeyUp
         }
     }
 }
@@ -227,11 +403,39 @@ export default {
 <style scoped>
 .bot-diagram-container {
     position: relative;
+    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+    /* Убеждаемся, что контейнер может прокручиваться по обеим осям */
+    width: 100%;
+    height: 100%;
+}
+
+.bot-diagram-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.bot-diagram-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.bot-diagram-container::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 4px;
+}
+
+.bot-diagram-container::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.7);
 }
 
 .diagram-canvas {
     position: relative;
     overflow: visible;
+    /* Убеждаемся, что контейнер может расширяться по обеим осям */
+    flex-shrink: 0;
 }
 </style>
 

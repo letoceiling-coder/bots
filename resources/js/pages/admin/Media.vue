@@ -1958,7 +1958,7 @@ export default {
       }
       // Fallback на props.selectedFiles
       if (props.selectedFiles && Array.isArray(props.selectedFiles)) {
-        return props.selectedFiles.some(f => f.id === file.id)
+      return props.selectedFiles.some(f => f.id === file.id)
       }
       return false
     }

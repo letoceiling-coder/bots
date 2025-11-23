@@ -5,14 +5,19 @@
             <p class="text-muted-foreground mt-1">Настройки системы</p>
         </div>
         <div class="bg-card rounded-lg border border-border p-6">
-            <p class="text-muted-foreground">Страница в разработке</p>
+            <BlockMethodsSettings />
         </div>
     </div>
 </template>
 
 <script>
+import BlockMethodsSettings from '../../components/admin/BlockMethodsSettings.vue'
+
 export default {
     name: 'Settings',
+    components: {
+        BlockMethodsSettings
+    }
 };
 </script>
 
