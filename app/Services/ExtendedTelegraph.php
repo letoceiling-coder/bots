@@ -16,6 +16,13 @@ use App\Models\Bot;
 class ExtendedTelegraph extends Telegraph
 {
     protected ?string $baseUrl = 'https://api.telegram.org/bot';
+    
+    /**
+     * Модель бота для работы с API
+     * 
+     * @var Bot|null
+     */
+    protected ?Bot $botModel = null;
 
     /**
      * Установить бота для работы с API
@@ -25,8 +32,45 @@ class ExtendedTelegraph extends Telegraph
      */
     public function setBot(Bot $bot): self
     {
-        $this->bot = $bot;
+        $this->botModel = $bot;
+        // Также устанавливаем в родительский класс, если это возможно
+        try {
+            $this->bot = $bot;
+        } catch (\Exception $e) {
+            // Игнорируем, если не удалось установить в родительский класс
+        }
         return $this;
+    }
+
+    /**
+     * Получить токен бота
+     * 
+     * @return string|null
+     */
+    protected function getBotToken(): ?string
+    {
+        // Пытаемся получить токен из установленной модели бота
+        if ($this->botModel instanceof Bot && $this->botModel->token) {
+            return $this->botModel->token;
+        }
+        
+        // Используем рефлексию для доступа к защищенному свойству родительского класса
+        try {
+            $reflection = new \ReflectionClass(parent::class);
+            if ($reflection->hasProperty('bot')) {
+                $property = $reflection->getProperty('bot');
+                $property->setAccessible(true);
+                $bot = $property->getValue($this);
+                if ($bot instanceof Bot) {
+                    return $bot->token;
+                }
+            }
+        } catch (\ReflectionException $e) {
+            // Игнорируем ошибки рефлексии
+        }
+        
+        // Пытаемся получить из конфигурации
+        return config('telegraph.bot_token');
     }
 
     /**
@@ -46,7 +90,7 @@ class ExtendedTelegraph extends Telegraph
      */
     protected function makeRequest(string $method, array $data = []): array
     {
-        $token = $this->bot?->token ?? config('telegraph.bot_token');
+        $token = $this->getBotToken();
         
         if (!$token) {
             throw new \Exception('Telegram bot token is not set');
@@ -308,7 +352,10 @@ class ExtendedTelegraph extends Telegraph
      */
     public function setChatPhotoApi(string $photoPath): array
     {
-        $token = $this->bot?->token ?? config('telegraph.bot_token');
+        $token = $this->getBotToken();
+        if (!$token) {
+            throw new \Exception('Telegram bot token is not set');
+        }
         $url = $this->buildApiUrl($token, 'setChatPhoto');
         
         $response = Http::attach('photo', file_get_contents($photoPath), basename($photoPath))
@@ -610,7 +657,10 @@ class ExtendedTelegraph extends Telegraph
         }
 
         $filePath = $fileInfo['result']['file_path'];
-        $token = $this->bot?->token ?? config('telegraph.bot_token');
+        $token = $this->getBotToken();
+        if (!$token) {
+            throw new \Exception('Telegram bot token is not set');
+        }
         $fileUrl = "https://api.telegram.org/file/bot{$token}/{$filePath}";
         
         $fileContent = Http::get($fileUrl)->body();
