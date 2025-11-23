@@ -34,12 +34,36 @@ class ExtendedTelegraph extends Telegraph
     public function setBot(Bot $bot): self
     {
         $this->botModel = $bot;
-        // Также устанавливаем в родительский класс, если это возможно
+        
+        // Устанавливаем бота в родительский класс через метод bot(), если он существует
         try {
-            $this->bot = $bot;
+            if (method_exists(parent::class, 'bot')) {
+                // Пытаемся использовать метод bot() родительского класса
+                // Но родительский класс может требовать TelegraphBot, а не нашу модель Bot
+                // Поэтому используем рефлексию для установки токена
+                $reflection = new \ReflectionClass(parent::class);
+                if ($reflection->hasProperty('bot')) {
+                    $property = $reflection->getProperty('bot');
+                    $property->setAccessible(true);
+                    // Устанавливаем нашу модель бота
+                    $property->setValue($this, $bot);
+                }
+            } else {
+                // Если метода bot() нет, используем рефлексию напрямую
+                $reflection = new \ReflectionClass(parent::class);
+                if ($reflection->hasProperty('bot')) {
+                    $property = $reflection->getProperty('bot');
+                    $property->setAccessible(true);
+                    $property->setValue($this, $bot);
+                }
+            }
         } catch (\Exception $e) {
             // Игнорируем, если не удалось установить в родительский класс
+            Log::warning('Could not set bot in parent class', [
+                'error' => $e->getMessage(),
+            ]);
         }
+        
         return $this;
     }
 
