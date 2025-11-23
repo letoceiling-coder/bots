@@ -92,7 +92,7 @@
                         type="button"
                         @click="fitToScreen"
                         class="p-2 hover:bg-muted/50 rounded transition-colors"
-                        title="На весь экран"
+                        title="Фокусировка всех блоков"
                     >
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
@@ -124,11 +124,13 @@
             :bot="bot"
             :blocks="blocks"
             :zoom="zoom"
+            :pan-offset="panOffset"
             @block-move="handleBlockMove"
             @block-click="handleBlockClick"
             @block-settings="handleBlockSettings"
             @block-delete="handleBlockDelete"
             @zoom-change="zoom = $event"
+            @pan-change="panOffset = $event"
         />
 
         <!-- Command Create Modal -->
@@ -293,6 +295,7 @@ export default {
         const showTestModal = ref(false)
         const selectedBlock = ref(null)
         const zoom = ref(1)
+        const panOffset = ref({ x: 0, y: 0 })
         const blocks = ref([])
         const commands = ref([])
         const testChatId = ref('')
@@ -405,7 +408,61 @@ export default {
         }
 
         const fitToScreen = () => {
-            zoom.value = 1
+            if (blocks.value.length === 0) {
+                zoom.value = 1
+                panOffset.value = { x: 0, y: 0 }
+                return
+            }
+
+            // Константы размеров блока
+            const BLOCK_WIDTH = 120
+            const BLOCK_HEIGHT = 100
+
+            // Вычисляем границы всех блоков
+            let minX = Infinity
+            let minY = Infinity
+            let maxX = -Infinity
+            let maxY = -Infinity
+
+            blocks.value.forEach(block => {
+                const x = block.x || 0
+                const y = block.y || 0
+                minX = Math.min(minX, x)
+                minY = Math.min(minY, y)
+                maxX = Math.max(maxX, x + BLOCK_WIDTH)
+                maxY = Math.max(maxY, y + BLOCK_HEIGHT)
+            })
+
+            // Добавляем отступы
+            const padding = 50
+            const contentWidth = maxX - minX + padding * 2
+            const contentHeight = maxY - minY + padding * 2
+
+            // Получаем размеры контейнера диаграммы (примерные, можно улучшить через ref)
+            const containerWidth = 1200 // Примерная ширина контейнера
+            const containerHeight = 600 // Примерная высота контейнера
+
+            // Вычисляем нужный zoom
+            const zoomX = containerWidth / contentWidth
+            const zoomY = containerHeight / contentHeight
+            const newZoom = Math.min(zoomX, zoomY, 2) // Ограничиваем максимальный zoom до 2
+            const finalZoom = Math.max(newZoom, 0.5) // Ограничиваем минимальный zoom до 0.5
+
+            // Вычисляем центр контента
+            const centerX = (minX + maxX) / 2
+            const centerY = (minY + maxY) / 2
+
+            // Вычисляем нужный panOffset для центрирования
+            // Центрируем контент в видимой области
+            const contentCenterX = (minX + maxX) / 2
+            const contentCenterY = (minY + maxY) / 2
+            
+            // Вычисляем смещение для центрирования
+            const newPanX = (containerWidth / 2) - (contentCenterX * finalZoom)
+            const newPanY = (containerHeight / 2) - (contentCenterY * finalZoom)
+
+            zoom.value = finalZoom
+            panOffset.value = { x: newPanX, y: newPanY }
         }
 
         const handleImport = () => {
@@ -1294,6 +1351,7 @@ export default {
             showTestModal,
             selectedBlock,
             zoom,
+            panOffset,
             blocks,
             commands,
             testChatId,

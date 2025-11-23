@@ -105,9 +105,13 @@ export default {
         zoom: {
             type: Number,
             default: 1
+        },
+        panOffset: {
+            type: Object,
+            default: () => ({ x: 0, y: 0 })
         }
     },
-    emits: ['block-move', 'block-click', 'block-settings', 'block-delete', 'zoom-change'],
+    emits: ['block-move', 'block-click', 'block-settings', 'block-delete', 'zoom-change', 'pan-change'],
     setup(props, { emit }) {
         const diagramContainer = ref(null)
         const containerRef = ref(null)
@@ -117,7 +121,14 @@ export default {
         const dragStart = ref({ x: 0, y: 0 })
         const scrollStart = ref({ left: 0, top: 0 })
         const isSpacePressed = ref(false)
-        const panOffset = ref({ x: 0, y: 0 })
+        const panOffset = ref({ x: props.panOffset.x, y: props.panOffset.y })
+
+        // Синхронизируем panOffset с props
+        watch(() => props.panOffset, (newValue) => {
+            if (newValue) {
+                panOffset.value = { x: newValue.x, y: newValue.y }
+            }
+        }, { deep: true })
 
         // Константы размеров блока
         const BLOCK_WIDTH = 120
@@ -346,6 +357,9 @@ export default {
                 x: scrollStart.value.left + deltaX,
                 y: scrollStart.value.top + deltaY
             }
+            
+            // Эмитим изменение panOffset
+            emit('pan-change', { ...panOffset.value })
         }
 
         // Обработка окончания перетаскивания
