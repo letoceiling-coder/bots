@@ -748,11 +748,11 @@ class ExtendedTelegraph extends Telegraph
         string $callbackQueryId,
         ?string $text = null,
         bool $showAlert = false,
-        ?string $url = null,
+        ?string $callbackUrl = null,
         int $cacheTime = 0
     ): array {
         $token = $this->getBotToken();
-        $url = $this->buildApiUrl($token, 'answerCallbackQuery');
+        $apiUrl = $this->buildApiUrl($token, 'answerCallbackQuery');
 
         $data = [
             'callback_query_id' => $callbackQueryId,
@@ -766,8 +766,8 @@ class ExtendedTelegraph extends Telegraph
             $data['show_alert'] = true;
         }
 
-        if ($url !== null) {
-            $data['url'] = $url;
+        if ($callbackUrl !== null) {
+            $data['url'] = $callbackUrl;
         }
 
         if ($cacheTime > 0) {
@@ -775,7 +775,7 @@ class ExtendedTelegraph extends Telegraph
         }
 
         try {
-            $response = Http::post($url, $data);
+            $response = Http::post($apiUrl, $data);
             $result = $response->json();
 
             if (!$response->successful() || (isset($result['ok']) && !$result['ok'])) {

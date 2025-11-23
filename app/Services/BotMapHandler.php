@@ -496,6 +496,15 @@ class BotMapHandler
                         }
                         $inlineKeyboard[] = $inlineRow;
                     }
+                    
+                    // Логируем отправляемую клавиатуру для диагностики
+                    Log::debug('Sending inline keyboard', [
+                        'session_id' => $session->id,
+                        'block_id' => $block['id'] ?? null,
+                        'buttons_count' => count($inlineKeyboard),
+                        'keyboard_structure' => json_encode($inlineKeyboard),
+                    ]);
+                    
                     $result = $telegraph->message($botResponse)
                         ->inlineKeyboard($inlineKeyboard)
                         ->send();
@@ -561,6 +570,29 @@ class BotMapHandler
                 'block_id' => $block['id'] ?? null,
                 'method' => $method,
             ]);
+
+            // Автоматический переход к следующему блоку после выполнения
+            // (только для блоков, которые не требуют ответа пользователя)
+            $nextBlockId = $block['nextBlockId'] ?? null;
+            if ($nextBlockId && in_array($method, ['sendMessage', 'inlineKeyboard', 'sendDocument'])) {
+                $nextBlock = $this->findBlockById($blocks, $nextBlockId);
+                if ($nextBlock) {
+                    Log::info('Auto-moving to next block after execution', [
+                        'session_id' => $session->id,
+                        'current_block_id' => $block['id'] ?? null,
+                        'next_block_id' => $nextBlockId,
+                        'next_block_label' => $nextBlock['label'] ?? null,
+                    ]);
+                    $this->sessionService->updateCurrentBlock($session, $nextBlockId);
+                    $this->executeBlock($bot, $session, $nextBlock, $blocks);
+                } else {
+                    Log::warning('Next block not found for auto-move', [
+                        'session_id' => $session->id,
+                        'current_block_id' => $block['id'] ?? null,
+                        'next_block_id' => $nextBlockId,
+                    ]);
+                }
+            }
 
         } catch (\Exception $e) {
             Log::error('Error executing block', [
