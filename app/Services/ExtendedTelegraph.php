@@ -310,22 +310,22 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Удалить фото чата
+     * Удалить фото чата через API
      * 
      * @return array
      */
-    public function deleteChatPhoto(): array
+    public function deleteChatPhotoApi(): array
     {
         return $this->makeRequest('deleteChatPhoto');
     }
 
     /**
-     * Установить название чата
+     * Установить название чата через API
      * 
      * @param string $title Новое название
      * @return array
      */
-    public function setChatTitle(string $title): array
+    public function setChatTitleApi(string $title): array
     {
         $data = [
             'title' => $title,
@@ -335,12 +335,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Установить описание чата
+     * Установить описание чата через API
      * 
      * @param string $description Новое описание
      * @return array
      */
-    public function setChatDescription(string $description): array
+    public function setChatDescriptionApi(string $description): array
     {
         $data = [
             'description' => $description,
@@ -350,13 +350,13 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Закрепить сообщение
+     * Закрепить сообщение через API
      * 
      * @param int $messageId ID сообщения
      * @param bool $disableNotification Отключить уведомление
      * @return array
      */
-    public function pinChatMessage(int $messageId, bool $disableNotification = false): array
+    public function pinChatMessageApi(int $messageId, bool $disableNotification = false): array
     {
         $data = [
             'message_id' => $messageId,
@@ -367,12 +367,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Открепить сообщение
+     * Открепить сообщение через API
      * 
      * @param int|null $messageId ID сообщения (если null, открепляет все)
      * @return array
      */
-    public function unpinChatMessage(?int $messageId = null): array
+    public function unpinChatMessageApi(?int $messageId = null): array
     {
         $data = [];
         

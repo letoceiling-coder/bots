@@ -306,7 +306,7 @@ class BotController extends Controller
                     break;
 
                 case 'pinChatMessage':
-                    $result = $telegraph->pinChatMessage(
+                    $result = $telegraph->pinChatMessageApi(
                         $methodData['message_id'] ?? null,
                         $methodData['disable_notification'] ?? false
                     )->send();
