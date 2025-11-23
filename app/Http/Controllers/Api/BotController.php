@@ -362,8 +362,63 @@ class BotController extends Controller
             $telegraph = new ExtendedTelegraph();
             $telegraph->bot = $bot;
             
+            // Проверяем наличие webhook перед получением обновлений
+            try {
+                $webhookInfo = $telegraph->getWebhookInfo();
+                if (isset($webhookInfo['result']['url']) && !empty($webhookInfo['result']['url'])) {
+                    // Webhook установлен, это может мешать получению обновлений
+                    // Но не блокируем запрос, просто предупреждаем
+                }
+            } catch (\Exception $e) {
+                // Игнорируем ошибку проверки webhook
+            }
+            
             // Получаем последние обновления
             $updates = $telegraph->getUpdates(null, 10);
+            
+            // Проверяем, что ответ от API корректен
+            if (!isset($updates['ok'])) {
+                return response()->json([
+                    'message' => 'Ошибка получения обновлений',
+                    'error' => 'Неверный формат ответа от Telegram API',
+                    'recommendations' => [
+                        'Проверьте подключение к интернету',
+                        'Проверьте правильность токена бота',
+                        'Убедитесь, что бот активен'
+                    ],
+                ], 500);
+            }
+            
+            // Если API вернул ошибку
+            if (!$updates['ok']) {
+                $errorCode = $updates['error_code'] ?? null;
+                $description = $updates['description'] ?? 'Неизвестная ошибка';
+                
+                $recommendations = [];
+                
+                if ($errorCode === 401 || str_contains($description, 'Unauthorized')) {
+                    $recommendations[] = 'Проверьте правильность токена бота';
+                    $recommendations[] = 'Убедитесь, что бот активен';
+                    $recommendations[] = 'Проверьте токен в настройках бота в Telegram';
+                } elseif ($errorCode === 409 || str_contains($description, 'conflict')) {
+                    $recommendations[] = 'У бота установлен webhook. Для получения обновлений через getUpdates нужно удалить webhook';
+                    $recommendations[] = 'Используйте метод deleteWebhook или удалите webhook в настройках бота';
+                } elseif (str_contains($description, 'token')) {
+                    $recommendations[] = 'Проверьте правильность токена бота';
+                    $recommendations[] = 'Убедитесь, что токен не был изменен';
+                } else {
+                    $recommendations[] = 'Убедитесь, что бот активен';
+                    $recommendations[] = 'Проверьте правильность токена бота';
+                    $recommendations[] = 'Бот должен получать сообщения (возможно не установлен webhook)';
+                }
+                
+                return response()->json([
+                    'message' => 'Ошибка получения обновлений',
+                    'error' => $description,
+                    'error_code' => $errorCode,
+                    'recommendations' => $recommendations,
+                ], 500);
+            }
             
             // Извлекаем chat_id из обновлений
             $chatIds = [];
@@ -403,6 +458,23 @@ class BotController extends Controller
                 }
             }
 
+            // Если обновлений нет, это не ошибка, но нужно сообщить пользователю
+            if (empty($uniqueChatIds)) {
+                return response()->json([
+                    'message' => 'Обновления не найдены',
+                    'data' => [
+                        'updates' => $updates,
+                        'chat_ids' => []
+                    ],
+                    'info' => [
+                        'Обновлений не найдено. Это может означать:',
+                        '• Бот еще не получал сообщений',
+                        '• У бота установлен webhook (нужно удалить для работы getUpdates)',
+                        '• Обновления были получены ранее и удалены из очереди'
+                    ]
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Обновления получены',
                 'data' => [
@@ -411,9 +483,31 @@ class BotController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
+            $errorMessage = $e->getMessage();
+            
+            // Определяем тип ошибки и даем рекомендации
+            $recommendations = [];
+            
+            if (str_contains($errorMessage, 'token') || str_contains($errorMessage, 'Unauthorized')) {
+                $recommendations[] = 'Проверьте правильность токена бота';
+                $recommendations[] = 'Убедитесь, что бот активен';
+                $recommendations[] = 'Проверьте токен в настройках бота в Telegram';
+            } elseif (str_contains($errorMessage, 'conflict') || str_contains($errorMessage, 'webhook')) {
+                $recommendations[] = 'У бота установлен webhook. Для получения обновлений через getUpdates нужно удалить webhook';
+                $recommendations[] = 'Используйте метод deleteWebhook или удалите webhook в настройках бота';
+            } elseif (str_contains($errorMessage, 'not found') || str_contains($errorMessage, '404')) {
+                $recommendations[] = 'Бот не найден. Проверьте правильность токена';
+                $recommendations[] = 'Убедитесь, что бот активен';
+            } else {
+                $recommendations[] = 'Убедитесь, что бот активен';
+                $recommendations[] = 'Проверьте правильность токена бота';
+                $recommendations[] = 'Бот должен получать сообщения (возможно не установлен webhook)';
+            }
+            
             return response()->json([
                 'message' => 'Ошибка получения обновлений',
-                'error' => $e->getMessage(),
+                'error' => $errorMessage,
+                'recommendations' => $recommendations,
             ], 500);
         }
     }

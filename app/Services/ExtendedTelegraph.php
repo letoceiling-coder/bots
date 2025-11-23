@@ -45,10 +45,27 @@ class ExtendedTelegraph extends Telegraph
         $response = Http::post($url, $data);
         
         if (!$response->successful()) {
-            throw new \Exception("Telegram API error: " . $response->body());
+            $errorBody = $response->body();
+            $errorData = $response->json();
+            
+            // Пытаемся извлечь описание ошибки из JSON ответа
+            $errorMessage = $errorData['description'] ?? $errorBody;
+            $errorCode = $errorData['error_code'] ?? $response->status();
+            
+            throw new \Exception("Telegram API error ({$errorCode}): {$errorMessage}");
         }
 
-        return $response->json();
+        $result = $response->json();
+        
+        // Проверяем, что ответ содержит поле 'ok'
+        if (isset($result['ok']) && !$result['ok']) {
+            $errorMessage = $result['description'] ?? 'Unknown error';
+            $errorCode = $result['error_code'] ?? null;
+            
+            throw new \Exception("Telegram API error" . ($errorCode ? " ({$errorCode})" : '') . ": {$errorMessage}");
+        }
+
+        return $result;
     }
 
     /**
