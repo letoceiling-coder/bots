@@ -20,6 +20,7 @@ class PushToServer extends Command
                             {--skip-push : Пропустить push (только коммит)}
                             {--skip-pull : Пропустить pull (не получать изменения с сервера)}
                             {--force : Принудительная отправка (опасно! перезапишет изменения на сервере)}
+                            {--no-ssl-verify : Отключить проверку SSL сертификата (только для локальной разработки)}
                             {--branch=main : Ветка для push}
                             {--server=https://parser-auto.siteaccess.ru : URL сервера}
                             {--secret= : Секретный ключ для авторизации}';
@@ -364,7 +365,17 @@ class PushToServer extends Command
             }
 
             try {
-                $response = Http::timeout(30)->post("{$serverUrl}/api/deploy", $payload);
+                $httpClient = Http::timeout(30);
+                
+                // Отключаем проверку SSL если указана опция
+                if ($this->option('no-ssl-verify')) {
+                    $this->warn('⚠️  Проверка SSL сертификата отключена (только для локальной разработки!)');
+                    $httpClient = $httpClient->withOptions([
+                        'verify' => false,
+                    ]);
+                }
+                
+                $response = $httpClient->post("{$serverUrl}/api/deploy", $payload);
 
                 if ($response->successful()) {
                     $data = $response->json();
@@ -392,14 +403,43 @@ class PushToServer extends Command
                     
                     return Command::FAILURE;
                 }
-            } catch (\Exception $e) {
-                $this->error('❌ Ошибка при отправке запроса на сервер: ' . $e->getMessage());
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                $this->error('❌ Ошибка подключения к серверу: ' . $e->getMessage());
                 $this->warn('');
                 $this->warn('Возможные причины:');
                 $this->line('1. Сервер недоступен');
                 $this->line('2. Неправильный URL сервера');
-                $this->line('3. Проблемы с сетью');
-                $this->line('4. Неправильный секретный ключ');
+                $this->line('3. Проблемы с сетью или файрволом');
+                $this->line('4. Проблемы с SSL сертификатом');
+                $this->newLine();
+                $this->info('💡 Попробуйте использовать опцию --no-ssl-verify для отключения проверки SSL:');
+                $this->line("   php artisan push:server --no-ssl-verify");
+                return Command::FAILURE;
+            } catch (\Exception $e) {
+                $errorMessage = $e->getMessage();
+                
+                // Проверяем, это ли ошибка SSL
+                if (strpos($errorMessage, 'SSL') !== false || 
+                    strpos($errorMessage, 'certificate') !== false ||
+                    strpos($errorMessage, 'cURL error 60') !== false) {
+                    $this->error('❌ Ошибка SSL сертификата: ' . $errorMessage);
+                    $this->warn('');
+                    $this->warn('Это типичная проблема на Windows при работе с самоподписанными сертификатами.');
+                    $this->newLine();
+                    $this->info('💡 Решение: Используйте опцию --no-ssl-verify:');
+                    $this->line("   php artisan push:server --no-ssl-verify");
+                    $this->newLine();
+                    $this->warn('⚠️  ВНИМАНИЕ: Отключение проверки SSL снижает безопасность!');
+                    $this->warn('   Используйте только для локальной разработки.');
+                } else {
+                    $this->error('❌ Ошибка при отправке запроса на сервер: ' . $errorMessage);
+                    $this->warn('');
+                    $this->warn('Возможные причины:');
+                    $this->line('1. Сервер недоступен');
+                    $this->line('2. Неправильный URL сервера');
+                    $this->line('3. Проблемы с сетью');
+                    $this->line('4. Неправильный секретный ключ');
+                }
                 return Command::FAILURE;
             }
 
