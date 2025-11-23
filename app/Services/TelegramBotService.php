@@ -29,7 +29,7 @@ class TelegramBotService
         }
 
         $telegraph = new ExtendedTelegraph();
-        $telegraph->bot = $bot;
+        $telegraph->setBot($bot);
 
         return $telegraph;
     }

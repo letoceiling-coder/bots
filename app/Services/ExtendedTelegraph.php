@@ -18,6 +18,18 @@ class ExtendedTelegraph extends Telegraph
     protected ?string $baseUrl = 'https://api.telegram.org/bot';
 
     /**
+     * Установить бота для работы с API
+     * 
+     * @param Bot $bot Модель бота
+     * @return $this
+     */
+    public function setBot(Bot $bot): self
+    {
+        $this->bot = $bot;
+        return $this;
+    }
+
+    /**
      * Получить URL для API запросов
      * 
      * @param string $token Токен бота

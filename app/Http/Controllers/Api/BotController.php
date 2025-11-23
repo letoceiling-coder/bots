@@ -128,7 +128,7 @@ class BotController extends Controller
         
         try {
             $telegraph = new ExtendedTelegraph();
-            $telegraph->bot = $bot;
+            $telegraph->setBot($bot);
             $info = $telegraph->getMeApi();
             
             return response()->json([
@@ -363,7 +363,7 @@ class BotController extends Controller
 
         try {
             $telegraph = new ExtendedTelegraph();
-            $telegraph->bot = $bot;
+            $telegraph->setBot($bot);
             
             // Проверяем наличие webhook перед получением обновлений
             try {
