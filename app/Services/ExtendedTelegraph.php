@@ -68,6 +68,34 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
+     * Установить режим парсинга для сообщения
+     * 
+     * @param string|null $parseMode Режим парсинга (HTML, Markdown, MarkdownV2)
+     * @return $this
+     */
+    public function parseMode(?string $parseMode): self
+    {
+        // Пытаемся вызвать родительский метод, если он существует
+        try {
+            if (method_exists(parent::class, 'parseMode')) {
+                return parent::parseMode($parseMode);
+            }
+        } catch (\Exception $e) {
+            // Игнорируем, если метод не существует
+        }
+        
+        // Устанавливаем parse_mode в данных запроса
+        if ($parseMode) {
+            if (!isset($this->data)) {
+                $this->data = [];
+            }
+            $this->data['parse_mode'] = $parseMode;
+        }
+        
+        return $this;
+    }
+
+    /**
      * Получить токен бота
      * 
      * @return string
