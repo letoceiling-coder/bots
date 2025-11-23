@@ -1,59 +1,203 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Telegram Bots Management System
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Система управления Telegram ботами на базе Laravel с расширенным функционалом для работы с Telegram Bot API.
 
-## About Laravel
+## 🚀 Возможности
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- ✅ Управление Telegram ботами (CRUD операции)
+- ✅ Расширенный класс `ExtendedTelegraph` с дополнительными методами Telegram Bot API
+- ✅ Веб-интерфейс для управления ботами
+- ✅ API для интеграции с ботами
+- ✅ Интеграция с пакетом [defstudio/telegraph](https://github.com/defstudio/telegraph)
+- ✅ Управление пользователями и ролями
+- ✅ Система уведомлений
+- ✅ Медиа-библиотека
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 📋 Требования
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- PHP >= 8.2
+- Composer
+- Node.js и npm
+- MySQL/PostgreSQL/SQLite
+- Laravel 12.x
 
-## Learning Laravel
+## 🔧 Установка
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+1. **Клонируйте репозиторий:**
+```bash
+git clone https://github.com/letoceiling-coder/bots.git
+cd bots
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+2. **Установите зависимости:**
+```bash
+composer install
+npm install
+```
 
-## Laravel Sponsors
+3. **Настройте окружение:**
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+4. **Настройте базу данных в `.env`:**
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=your_database
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
+```
 
-### Premium Partners
+5. **Выполните миграции:**
+```bash
+php artisan migrate
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+6. **Соберите фронтенд:**
+```bash
+npm run build
+```
 
-## Contributing
+7. **Запустите сервер:**
+```bash
+php artisan serve
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 📦 Установка Telegraph
 
-## Code of Conduct
+Для работы с Telegram ботами необходимо установить пакет Telegraph:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+composer require defstudio/telegraph
+php artisan vendor:publish --tag="telegraph-migrations"
+php artisan migrate
+php artisan vendor:publish --tag="telegraph-config"
+```
 
-## Security Vulnerabilities
+Подробная инструкция в файле [INSTALL_TELEGRAPH.md](INSTALL_TELEGRAPH.md)
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## 🎯 Использование
 
-## License
+### Управление ботами через веб-интерфейс
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+1. Зарегистрируйтесь или войдите в систему
+2. Перейдите в раздел "Bots" в меню
+3. Добавьте нового бота, указав токен от BotFather
+4. Управляйте ботами: редактирование, удаление, отправка сообщений
+
+### Использование ExtendedTelegraph
+
+```php
+use App\Services\ExtendedTelegraph;
+use App\Models\Bot;
+
+$bot = Bot::find(1);
+$telegraph = new ExtendedTelegraph();
+$telegraph->bot = $bot;
+
+// Отправить сообщение
+$telegraph->chat('123456789')
+    ->message('Привет!')
+    ->send();
+
+// Отправить кубик
+$telegraph->chat('123456789')
+    ->sendDice('🎲')
+    ->send();
+```
+
+### Использование TelegramBotService
+
+```php
+use App\Services\TelegramBotService;
+
+$service = new TelegramBotService();
+
+// Отправить сообщение
+$service->sendMessage(1, '123456789', 'Привет!');
+
+// Отправить опрос
+$service->sendPoll(1, '123456789', 'Вопрос?', ['Вариант 1', 'Вариант 2']);
+```
+
+Подробная документация в файле [README_TELEGRAPH.md](README_TELEGRAPH.md)
+
+## 📡 API Endpoints
+
+### Управление ботами
+
+- `GET /api/v1/bots` - Список всех ботов
+- `POST /api/v1/bots` - Создать бота
+- `GET /api/v1/bots/{id}` - Получить информацию о боте
+- `PUT /api/v1/bots/{id}` - Обновить бота
+- `DELETE /api/v1/bots/{id}` - Удалить бота
+- `GET /api/v1/bots/{id}/info` - Получить информацию о боте через Telegram API
+- `POST /api/v1/bots/{id}/send-message` - Отправить тестовое сообщение
+
+### Пример запроса
+
+```bash
+POST /api/v1/bots/1/send-message
+Content-Type: application/json
+Authorization: Bearer {token}
+
+{
+    "chat_id": "123456789",
+    "message": "Привет из API!"
+}
+```
+
+## 🛠️ Дополнительные методы Telegram Bot API
+
+Класс `ExtendedTelegraph` включает множество дополнительных методов:
+
+- Отправка сообщений: `sendDice()`, `sendPoll()`, `sendVenue()`, `sendContact()`
+- Редактирование: `editMessageText()`, `editMessageCaption()`
+- Управление чатами: `getChat()`, `setChatTitle()`, `pinChatMessage()`, и др.
+- Управление участниками: `banChatMember()`, `promoteChatMember()`, и др.
+- Работа с файлами: `getFile()`, `downloadFile()`
+- Webhook: `setWebhook()`, `getWebhookInfo()`
+
+Полный список методов смотрите в [README_TELEGRAPH.md](README_TELEGRAPH.md)
+
+## 📁 Структура проекта
+
+```
+├── app/
+│   ├── Http/Controllers/Api/
+│   │   └── BotController.php          # Контроллер для управления ботами
+│   ├── Models/
+│   │   └── Bot.php                   # Модель бота
+│   └── Services/
+│       ├── ExtendedTelegraph.php     # Расширенный класс Telegraph
+│       └── TelegramBotService.php    # Сервис для работы с ботами
+├── database/migrations/
+│   └── 2025_11_23_105108_create_telegram_bots_table.php
+├── resources/js/pages/admin/
+│   └── Bots.vue                      # Vue компонент для управления ботами
+└── routes/
+    └── api.php                        # API маршруты
+```
+
+## 🔐 Безопасность
+
+- Все API endpoints защищены через Laravel Sanctum
+- Управление ботами доступно только администраторам
+- Токены ботов хранятся в зашифрованном виде
+
+## 📝 Лицензия
+
+MIT License
+
+## 👨‍💻 Автор
+
+[letoceiling-coder](https://github.com/letoceiling-coder)
+
+## 🙏 Благодарности
+
+- [Laravel](https://laravel.com) - PHP Framework
+- [defstudio/telegraph](https://github.com/defstudio/telegraph) - Laravel package for Telegram Bots
+- [Vue.js](https://vuejs.org) - JavaScript Framework
