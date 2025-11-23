@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use DefStudio\Telegraph\Telegraph;
+use DefStudio\Telegraph\Client\TelegraphResponse;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Bot;
@@ -97,50 +98,38 @@ class ExtendedTelegraph extends Telegraph
 
     /**
      * Отправить запрос (переопределяем метод родительского класса)
-     * Использует наш makeRequest для правильной обработки данных
+     * Использует родительский метод для правильной обработки данных
      * 
-     * @return array
+     * @return TelegraphResponse
      */
-    public function send(): array
+    public function send(): TelegraphResponse
     {
-        // Пытаемся вызвать родительский метод, если он существует
-        try {
-            if (method_exists(parent::class, 'send')) {
-                $result = parent::send();
-                // Если родительский метод вернул результат, логируем и возвращаем
-                if (is_array($result)) {
-                    Log::info('Telegram message sent via parent send()', [
-                        'endpoint' => $this->endpoint ?? 'unknown',
-                        'result' => $result,
-                    ]);
-                    return $result;
-                }
-            }
-        } catch (\Exception $e) {
-            // Если родительский метод не работает, используем наш makeRequest
-            Log::warning('Parent send() failed, using makeRequest()', [
-                'error' => $e->getMessage(),
-                'endpoint' => $this->endpoint ?? 'unknown',
-            ]);
-        }
-        
-        // Используем наш makeRequest для отправки
+        // Убеждаемся, что данные правильно установлены перед отправкой
         $endpoint = $this->endpoint ?? 'sendMessage';
         $data = $this->data ?? [];
         
         // Добавляем текст сообщения, если он установлен через message()
         if (isset($this->message) && !isset($data['text'])) {
             $data['text'] = $this->message;
+            $this->data = $data;
         }
         
         // Логируем отправку
-        Log::info('Sending Telegram message via makeRequest()', [
+        Log::info('Sending Telegram message via parent send()', [
             'endpoint' => $endpoint,
             'data_keys' => array_keys($data),
             'has_chat' => isset($this->chat),
         ]);
         
-        $result = $this->makeRequest($endpoint, $data);
+        // Вызываем родительский метод send()
+        $result = parent::send();
+        
+        // Логируем результат
+        Log::info('Telegram message sent', [
+            'endpoint' => $endpoint,
+            'success' => $result->successful(),
+            'message_id' => $result->telegraphMessageId() ?? null,
+        ]);
         
         // Очищаем данные после отправки
         $this->endpoint = null;

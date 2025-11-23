@@ -329,16 +329,30 @@ class BotController extends Controller
                     ], 400);
             }
 
+            // Преобразуем TelegraphResponse в массив для JSON ответа
+            $resultArray = [];
+            if ($result instanceof \DefStudio\Telegraph\Client\TelegraphResponse) {
+                $resultArray = [
+                    'ok' => $result->successful(),
+                    'result' => $result->json(),
+                    'message_id' => $result->telegraphMessageId(),
+                ];
+            } elseif (is_array($result)) {
+                $resultArray = $result;
+            } else {
+                $resultArray = ['ok' => true, 'result' => $result];
+            }
+            
             Log::info('Block method executed successfully', [
                 'bot_id' => $bot->id,
                 'method' => $method,
-                'result_ok' => $result['ok'] ?? false,
-                'result_message_id' => $result['result']['message_id'] ?? null,
+                'result_ok' => $resultArray['ok'] ?? false,
+                'result_message_id' => $resultArray['result']['message_id'] ?? $resultArray['message_id'] ?? null,
             ]);
             
             return response()->json([
                 'message' => 'Метод успешно выполнен',
-                'data' => $result,
+                'data' => $resultArray,
             ]);
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
