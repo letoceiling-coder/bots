@@ -102,27 +102,80 @@ class Deploy extends Command
             $this->newLine();
             $this->info('📥 Получение обновлений из Git...');
             
-            try {
-                $result = Process::run('git fetch origin && git pull origin main');
+            // Сначала проверяем статус
+            $statusProcess = new SymfonyProcess(['git', 'status', '--porcelain']);
+            $statusProcess->run();
+            $statusOutput = trim($statusProcess->getOutput());
+            
+            // Проверяем наличие локальных изменений
+            if (!empty($statusOutput)) {
+                $this->warn('⚠️  Обнаружены локальные изменения в репозитории');
                 
-                if (!$result->successful()) {
-                    $this->error('❌ Ошибка при получении обновлений из Git');
-                    $this->error($result->errorOutput());
-                    $this->warn('');
-                    $this->warn('Возможные причины:');
-                    $this->line('1. Нет доступа к репозиторию (проверьте аутентификацию)');
-                    $this->line('2. Ветка называется не "main" (проверьте: git branch -a)');
-                    $this->line('3. Нет подключения к интернету');
-                    return Command::FAILURE;
+                // Разделяем на отслеживаемые и неотслеживаемые файлы
+                $lines = explode("\n", $statusOutput);
+                $modifiedFiles = [];
+                $untrackedFiles = [];
+                
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if (empty($line)) continue;
+                    
+                    if (strpos($line, '??') === 0) {
+                        // Неотслеживаемый файл
+                        $untrackedFiles[] = substr($line, 3);
+                    } else {
+                        // Измененный файл
+                        $modifiedFiles[] = substr($line, 3);
+                    }
                 }
-            } catch (\Exception $e) {
-                // Fallback для старых версий Laravel
-                $process = new SymfonyProcess(['git', 'fetch', 'origin']);
-                $process->run();
                 
-                if (!$process->isSuccessful()) {
-                    $this->error('❌ Ошибка при получении обновлений из Git');
-                    $this->error($process->getErrorOutput());
+                if (!empty($modifiedFiles)) {
+                    $this->warn('   Измененные файлы:');
+                    foreach (array_slice($modifiedFiles, 0, 5) as $file) {
+                        $this->line("     - {$file}");
+                    }
+                    if (count($modifiedFiles) > 5) {
+                        $this->line("     ... и еще " . (count($modifiedFiles) - 5) . " файлов");
+                    }
+                }
+                
+                if (!empty($untrackedFiles)) {
+                    $this->warn('   Неотслеживаемые файлы:');
+                    foreach (array_slice($untrackedFiles, 0, 5) as $file) {
+                        $this->line("     - {$file}");
+                    }
+                    if (count($untrackedFiles) > 5) {
+                        $this->line("     ... и еще " . (count($untrackedFiles) - 5) . " файлов");
+                    }
+                }
+                
+                $this->newLine();
+                $this->warn('💡 Выполняется автоматическое сохранение изменений...');
+                
+                // Сохраняем изменения в stash
+                $stashProcess = new SymfonyProcess(['git', 'stash', 'push', '-u', '-m', 'Auto-stash before deploy: ' . date('Y-m-d H:i:s')]);
+                $stashProcess->run();
+                
+                if ($stashProcess->isSuccessful()) {
+                    $stashOutput = trim($stashProcess->getOutput());
+                    if (!empty($stashOutput) && strpos($stashOutput, 'No local changes') === false) {
+                        $this->info('✅ Локальные изменения сохранены в stash');
+                    } else {
+                        $this->info('✅ Нет изменений для сохранения');
+                    }
+                } else {
+                    $this->warn('⚠️  Не удалось сохранить изменения в stash, продолжаем...');
+                }
+            }
+            
+            try {
+                // Сначала делаем fetch
+                $fetchProcess = new SymfonyProcess(['git', 'fetch', 'origin']);
+                $fetchProcess->run();
+                
+                if (!$fetchProcess->isSuccessful()) {
+                    $this->error('❌ Ошибка при получении обновлений из Git (fetch)');
+                    $this->error($fetchProcess->getErrorOutput());
                     return Command::FAILURE;
                 }
                 
@@ -131,14 +184,42 @@ class Deploy extends Command
                 $branchProcess->run();
                 $currentBranch = trim($branchProcess->getOutput()) ?: 'main';
                 
-                $process = new SymfonyProcess(['git', 'pull', 'origin', $currentBranch]);
-                $process->run();
+                // Пробуем pull с rebase для более чистой истории
+                $pullProcess = new SymfonyProcess(['git', 'pull', '--rebase', 'origin', $currentBranch]);
+                $pullProcess->run();
                 
-                if (!$process->isSuccessful()) {
-                    $this->error('❌ Ошибка при получении обновлений из Git');
-                    $this->error($process->getErrorOutput());
-                    return Command::FAILURE;
+                if (!$pullProcess->isSuccessful()) {
+                    $errorOutput = $pullProcess->getErrorOutput();
+                    
+                    // Если rebase не удался, пробуем обычный pull
+                    if (strpos($errorOutput, 'conflict') !== false || strpos($errorOutput, 'CONFLICT') !== false) {
+                        $this->warn('⚠️  Обнаружены конфликты при rebase, пробуем обычный pull...');
+                        
+                        // Отменяем rebase
+                        $abortProcess = new SymfonyProcess(['git', 'rebase', '--abort']);
+                        $abortProcess->run();
+                        
+                        // Пробуем обычный pull
+                        $pullProcess = new SymfonyProcess(['git', 'pull', 'origin', $currentBranch]);
+                        $pullProcess->run();
+                        
+                        if (!$pullProcess->isSuccessful()) {
+                            $this->error('❌ Ошибка при получении обновлений из Git');
+                            $this->error($pullProcess->getErrorOutput());
+                            $this->warn('');
+                            $this->warn('Необходимо разрешить конфликты вручную:');
+                            $this->line("   git pull origin {$currentBranch}");
+                            return Command::FAILURE;
+                        }
+                    } else {
+                        $this->error('❌ Ошибка при получении обновлений из Git');
+                        $this->error($errorOutput);
+                        return Command::FAILURE;
+                    }
                 }
+            } catch (\Exception $e) {
+                $this->error('❌ Ошибка при получении обновлений из Git: ' . $e->getMessage());
+                return Command::FAILURE;
             }
             
             $this->info('✅ Обновления получены');
