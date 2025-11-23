@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Bot;
+use App\Services\ExtendedTelegraph;
+use App\Services\TelegramBotService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -114,5 +116,64 @@ class BotController extends Controller
         return response()->json([
             'message' => 'Бот успешно удален',
         ]);
+    }
+
+    /**
+     * Получить информацию о боте через Telegram API
+     */
+    public function getBotInfo(string $id)
+    {
+        $bot = Bot::findOrFail($id);
+        
+        try {
+            $telegraph = new ExtendedTelegraph();
+            $telegraph->bot = $bot;
+            $info = $telegraph->getMe();
+            
+            return response()->json([
+                'message' => 'Информация о боте получена',
+                'data' => $info,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Ошибка получения информации о боте',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Отправить тестовое сообщение от имени бота
+     */
+    public function sendTestMessage(Request $request, string $id)
+    {
+        $bot = Bot::findOrFail($id);
+        
+        $validator = Validator::make($request->all(), [
+            'chat_id' => 'required|string',
+            'message' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Ошибка валидации',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $service = new TelegramBotService();
+            $result = $service->sendMessage($bot, $request->chat_id, $request->message);
+            
+            return response()->json([
+                'message' => 'Сообщение отправлено',
+                'data' => $result,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Ошибка отправки сообщения',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

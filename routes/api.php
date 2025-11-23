@@ -51,6 +51,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::apiResource('roles', RoleController::class);
             Route::apiResource('users', UserController::class);
             Route::apiResource('bots', BotController::class);
+            Route::get('bots/{id}/info', [BotController::class, 'getBotInfo']);
+            Route::post('bots/{id}/send-message', [BotController::class, 'sendTestMessage']);
         });
     });
 });
