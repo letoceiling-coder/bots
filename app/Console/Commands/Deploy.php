@@ -150,55 +150,80 @@ class Deploy extends Command
                 $this->info('📦 Обновление Composer зависимостей...');
                 
                 // Определяем версию PHP и путь к composer
-                $phpVersion = $this->detectPhpVersion();
+                // ВСЕГДА пытаемся использовать php8.2 для composer
+                $phpVersion = $this->findPhp82();
                 $composerPath = $this->detectComposerPath();
+                
+                // Если не нашли php8.2, проверяем текущую версию PHP
+                if (!$phpVersion) {
+                    $currentPhp = PHP_VERSION;
+                    if (version_compare($currentPhp, '8.2', '>=')) {
+                        // Текущий PHP >= 8.2, можно использовать
+                        $phpVersion = null;
+                    } else {
+                        // Текущий PHP < 8.2, нужно найти php8.2
+                        $this->warn('⚠️  Текущая версия PHP: ' . $currentPhp);
+                        $this->warn('⚠️  Требуется PHP >= 8.2 для Composer');
+                    }
+                }
                 
                 // Формируем команду
                 if ($phpVersion && $composerPath) {
                     $composerCommand = "{$phpVersion} {$composerPath}";
                 } elseif ($phpVersion) {
-                    $composerCommand = "{$phpVersion} composer";
+                    $composerCommand = "{$phpVersion} " . ($composerPath ?: 'composer');
                 } elseif ($composerPath) {
                     $composerCommand = $composerPath;
                 } else {
                     $composerCommand = 'composer';
                 }
                 
+                // Всегда используем SymfonyProcess для правильной обработки команды
+                $command = [];
+                if ($phpVersion) {
+                    $command[] = $phpVersion;
+                }
+                if ($composerPath) {
+                    $command[] = $composerPath;
+                } else {
+                    $command[] = 'composer';
+                }
+                $command = array_merge($command, ['install', '--no-dev', '--optimize-autoloader']);
+                
                 try {
-                    $result = Process::run("{$composerCommand} install --no-dev --optimize-autoloader");
-                    
-                    if (!$result->successful()) {
-                        $this->error('❌ Ошибка при обновлении Composer зависимостей');
-                        $this->error($result->errorOutput());
-                        $this->warn('');
-                        $this->warn('Попробуйте выполнить вручную:');
-                        $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
-                        return Command::FAILURE;
-                    }
-                } catch (\Exception $e) {
-                    // Попробуем с явным указанием PHP и composer
-                    $command = [];
-                    if ($phpVersion) {
-                        $command[] = $phpVersion;
-                    }
-                    if ($composerPath) {
-                        $command[] = $composerPath;
-                    } else {
-                        $command[] = 'composer';
-                    }
-                    $command = array_merge($command, ['install', '--no-dev', '--optimize-autoloader']);
-                    
                     $process = new SymfonyProcess($command);
+                    $process->setTimeout(600); // Увеличиваем таймаут до 10 минут
+                    $process->setWorkingDirectory(base_path());
                     $process->run();
                     
                     if (!$process->isSuccessful()) {
                         $this->error('❌ Ошибка при обновлении Composer зависимостей');
-                        $this->error($process->getErrorOutput());
-                        $this->warn('');
-                        $this->warn('Попробуйте выполнить вручную:');
-                        $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
+                        $errorOutput = $process->getErrorOutput();
+                        $this->error($errorOutput);
+                        
+                        // Проверяем, не связана ли ошибка с версией PHP
+                        if (strpos($errorOutput, 'php version') !== false || strpos($errorOutput, 'php ^8.2') !== false) {
+                            $this->warn('');
+                            $this->warn('⚠️  Composer использует неправильную версию PHP!');
+                            $this->warn('');
+                            $this->warn('Попробуйте выполнить вручную:');
+                            $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
+                            $this->warn('');
+                            $this->warn('Или проверьте, что php8.2 доступен:');
+                            $this->line("   which php8.2");
+                        } else {
+                            $this->warn('');
+                            $this->warn('Попробуйте выполнить вручную:');
+                            $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
+                        }
                         return Command::FAILURE;
                     }
+                } catch (\Exception $e) {
+                    $this->error('❌ Ошибка при обновлении Composer зависимостей: ' . $e->getMessage());
+                    $this->warn('');
+                    $this->warn('Попробуйте выполнить вручную:');
+                    $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
+                    return Command::FAILURE;
                 }
                 
                 $this->info('✅ Composer зависимости обновлены');
@@ -422,6 +447,38 @@ class Deploy extends Command
         
         if (file_exists($nvmDir . '/nvm.sh')) {
             return "export NVM_DIR=\"{$nvmDir}\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && nvm use default";
+        }
+        
+        return null;
+    }
+
+    /**
+     * Найти php8.2
+     */
+    protected function findPhp82(): ?string
+    {
+        $phpVersions = ['php8.2', 'php82', '/usr/bin/php8.2', '/usr/local/bin/php8.2'];
+        
+        foreach ($phpVersions as $phpVersion) {
+            try {
+                if (strpos($phpVersion, '/') === 0) {
+                    if (file_exists($phpVersion) && is_executable($phpVersion)) {
+                        return $phpVersion;
+                    }
+                } else {
+                    $process = new SymfonyProcess(['which', $phpVersion]);
+                    $process->run();
+                    
+                    if ($process->isSuccessful()) {
+                        $path = trim($process->getOutput());
+                        if (!empty($path)) {
+                            return $phpVersion;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                continue;
+            }
         }
         
         return null;
