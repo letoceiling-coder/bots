@@ -317,6 +317,9 @@ class Deploy extends Command
                 // Загружаем nvm если доступен
                 $nvmCommand = $this->getNvmCommand();
                 
+                $buildOutput = '';
+                $buildError = '';
+                
                 try {
                     if ($nvmCommand) {
                         $result = Process::run("{$nvmCommand} && npm run build");
@@ -324,9 +327,15 @@ class Deploy extends Command
                         $result = Process::run('npm run build');
                     }
                     
+                    $buildOutput = $result->output();
+                    $buildError = $result->errorOutput();
+                    
                     if (!$result->successful()) {
                         $this->error('❌ Ошибка при сборке фронтенда');
-                        $this->error($result->errorOutput());
+                        $this->error($buildError ?: $buildOutput);
+                        $this->warn('');
+                        $this->warn('Попробуйте выполнить вручную:');
+                        $this->line('   npm run build');
                         return Command::FAILURE;
                     }
                 } catch (\Exception $e) {
@@ -335,16 +344,36 @@ class Deploy extends Command
                         : ['npm', 'run', 'build'];
                     
                     $process = new SymfonyProcess($command);
+                    $process->setTimeout(600); // 10 минут для сборки
                     $process->run();
+                    
+                    $buildOutput = $process->getOutput();
+                    $buildError = $process->getErrorOutput();
                     
                     if (!$process->isSuccessful()) {
                         $this->error('❌ Ошибка при сборке фронтенда');
-                        $this->error($process->getErrorOutput());
+                        $this->error($buildError ?: $buildOutput);
+                        $this->warn('');
+                        $this->warn('Попробуйте выполнить вручную:');
+                        $this->line('   npm run build');
                         return Command::FAILURE;
                     }
                 }
                 
-                $this->info('✅ Фронтенд собран');
+                // Проверяем, что файлы сборки действительно созданы
+                $buildDir = base_path('public/build');
+                $manifestFile = $buildDir . '/.vite/manifest.json';
+                
+                if (file_exists($manifestFile) || is_dir($buildDir)) {
+                    $this->info('✅ Фронтенд собран успешно');
+                    $this->line('   Файлы сборки находятся в: public/build');
+                } else {
+                    $this->warn('⚠️  Сборка выполнена, но файлы не найдены в public/build');
+                    $this->warn('   Проверьте вывод сборки выше');
+                }
+            } elseif ($this->option('skip-build')) {
+                $this->warn('⚠️  Сборка фронтенда пропущена (--skip-build)');
+                $this->warn('   Убедитесь, что фронтенд собран вручную!');
             }
             $bar->advance();
 
@@ -364,7 +393,15 @@ class Deploy extends Command
             Artisan::call('cache:clear');
             Artisan::call('route:clear');
             Artisan::call('view:clear');
+            
+            // Очищаем кеш Vite/фронтенда если нужно
+            $viteCacheDir = base_path('public/build/.vite');
+            if (is_dir($viteCacheDir)) {
+                // Кеш Vite очищается автоматически при сборке
+            }
+            
             $this->info('✅ Кэш очищен');
+            $this->warn('💡 Если изменения не видны, очистите кеш браузера (Ctrl+F5 или Cmd+Shift+R)');
             $bar->advance();
 
             // 7. Optimize

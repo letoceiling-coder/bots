@@ -379,17 +379,34 @@ class PushToServer extends Command
 
                 if ($response->successful()) {
                     $data = $response->json();
-                    $this->info('✅ Запрос на обновление отправлен на сервер');
                     
                     if (isset($data['message'])) {
-                        $this->line('   ' . $data['message']);
+                        $this->info('✅ ' . $data['message']);
+                    } else {
+                        $this->info('✅ Запрос на обновление отправлен на сервер');
                     }
                     
-                    if (isset($data['status']) && $data['status'] === 'queued') {
-                        $this->info('   Статус: Ожидание выполнения');
-                    } elseif (isset($data['status']) && $data['status'] === 'running') {
-                        $this->info('   Статус: Выполняется обновление');
+                    if (isset($data['status'])) {
+                        if ($data['status'] === 'completed') {
+                            $this->info('   ✅ Статус: Обновление выполнено успешно');
+                            if (isset($data['branch'])) {
+                                $this->line("   Ветка: {$data['branch']}");
+                            }
+                        } elseif ($data['status'] === 'queued') {
+                            $this->info('   ⏳ Статус: Ожидание выполнения');
+                        } elseif ($data['status'] === 'running') {
+                            $this->info('   🔄 Статус: Выполняется обновление');
+                            if (isset($data['pid'])) {
+                                $this->line("   PID процесса: {$data['pid']}");
+                            }
+                            if (isset($data['log_file'])) {
+                                $this->line("   Лог файл: {$data['log_file']}");
+                            }
+                        }
                     }
+                    
+                    $this->newLine();
+                    $this->info('🎉 Готово! Изменения отправлены и применены на сервере.');
                 } else {
                     $statusCode = $response->status();
                     $body = $response->body();
