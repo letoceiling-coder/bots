@@ -7,6 +7,7 @@ use App\Models\Bot;
 use App\Services\ExtendedTelegraph;
 use App\Services\TelegramBotService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class BotController extends Controller
@@ -483,6 +484,14 @@ class BotController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
+            // Логируем ошибку для отладки
+            Log::error('Ошибка получения обновлений бота', [
+                'bot_id' => $id,
+                'bot_name' => $bot->name ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
             $errorMessage = $e->getMessage();
             
             // Определяем тип ошибки и даем рекомендации
@@ -492,12 +501,33 @@ class BotController extends Controller
                 $recommendations[] = 'Проверьте правильность токена бота';
                 $recommendations[] = 'Убедитесь, что бот активен';
                 $recommendations[] = 'Проверьте токен в настройках бота в Telegram';
-            } elseif (str_contains($errorMessage, 'conflict') || str_contains($errorMessage, 'webhook')) {
+            } elseif (str_contains($errorMessage, 'conflict') || str_contains($errorMessage, 'webhook') || str_contains($errorMessage, 'Conflict')) {
                 $recommendations[] = 'У бота установлен webhook. Для получения обновлений через getUpdates нужно удалить webhook';
                 $recommendations[] = 'Используйте метод deleteWebhook или удалите webhook в настройках бота';
             } elseif (str_contains($errorMessage, 'not found') || str_contains($errorMessage, '404')) {
                 $recommendations[] = 'Бот не найден. Проверьте правильность токена';
                 $recommendations[] = 'Убедитесь, что бот активен';
+            } elseif (str_contains($errorMessage, 'Telegram bot token is not set')) {
+                $recommendations[] = 'Токен бота не установлен';
+                $recommendations[] = 'Проверьте настройки бота в базе данных';
+            } elseif (str_contains($errorMessage, 'Telegram API error')) {
+                // Пытаемся извлечь детали из сообщения об ошибке
+                if (preg_match('/\((\d+)\):\s*(.+)/', $errorMessage, $matches)) {
+                    $errorCode = $matches[1];
+                    $errorDesc = $matches[2];
+                    
+                    if ($errorCode == 409) {
+                        $recommendations[] = 'У бота установлен webhook. Для получения обновлений через getUpdates нужно удалить webhook';
+                        $recommendations[] = 'Используйте метод deleteWebhook или удалите webhook в настройках бота';
+                    } elseif ($errorCode == 401) {
+                        $recommendations[] = 'Проверьте правильность токена бота';
+                        $recommendations[] = 'Убедитесь, что бот активен';
+                    }
+                } else {
+                    $recommendations[] = 'Ошибка при обращении к Telegram API';
+                    $recommendations[] = 'Проверьте подключение к интернету';
+                    $recommendations[] = 'Проверьте правильность токена бота';
+                }
             } else {
                 $recommendations[] = 'Убедитесь, что бот активен';
                 $recommendations[] = 'Проверьте правильность токена бота';

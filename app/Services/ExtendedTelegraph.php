@@ -4,6 +4,7 @@ namespace App\Services;
 
 use DefStudio\Telegraph\Telegraph;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use App\Models\Bot;
 
 /**
@@ -57,10 +58,27 @@ class ExtendedTelegraph extends Telegraph
 
         $result = $response->json();
         
+        // Если ответ не является массивом, это ошибка
+        if (!is_array($result)) {
+            Log::error('Telegram API вернул неверный формат ответа', [
+                'method' => $method,
+                'response_body' => $response->body(),
+                'status' => $response->status(),
+            ]);
+            throw new \Exception("Telegram API error: Invalid response format");
+        }
+        
         // Проверяем, что ответ содержит поле 'ok'
         if (isset($result['ok']) && !$result['ok']) {
             $errorMessage = $result['description'] ?? 'Unknown error';
             $errorCode = $result['error_code'] ?? null;
+            
+            Log::warning('Telegram API вернул ошибку', [
+                'method' => $method,
+                'error_code' => $errorCode,
+                'error_message' => $errorMessage,
+                'full_response' => $result,
+            ]);
             
             throw new \Exception("Telegram API error" . ($errorCode ? " ({$errorCode})" : '') . ": {$errorMessage}");
         }
