@@ -15,7 +15,7 @@ use App\Models\Bot;
  */
 class ExtendedTelegraph extends Telegraph
 {
-    protected string $baseUrl = 'https://api.telegram.org/bot';
+    protected ?string $baseUrl = 'https://api.telegram.org/bot';
 
     /**
      * Получить URL для API запросов
