@@ -193,6 +193,17 @@ class BotMapHandler
                 }
 
                 if ($buttonFound) {
+                    // Проверяем, есть ли у кнопки target_block_id
+                    $targetBlockId = null;
+                    foreach ($inlineKeyboard as $row) {
+                        foreach ($row as $button) {
+                            if (($button['callback_data'] ?? null) === $callbackData) {
+                                $targetBlockId = $button['target_block_id'] ?? null;
+                                break 2;
+                            }
+                        }
+                    }
+
                     // Сохраняем callback_data как данные сессии
                     $dataKey = $currentBlock['data_key'] ?? strtolower(str_replace([' ', '-'], '_', $currentBlock['label'] ?? 'answer'));
                     
@@ -208,6 +219,7 @@ class BotMapHandler
                         'data_key' => $dataKey,
                         'value' => $value,
                         'callback_data' => $callbackData,
+                        'target_block_id_from_button' => $targetBlockId,
                     ]);
 
                     $this->sessionService->saveSessionData($session, $dataKey, $value, $currentBlock['id'] ?? null);
@@ -223,7 +235,8 @@ class BotMapHandler
                     );
 
                     // Переходим к следующему блоку
-                    $nextBlockId = $currentBlock['nextBlockId'] ?? null;
+                    // Приоритет: target_block_id из кнопки > nextBlockId блока
+                    $nextBlockId = $targetBlockId ?? $currentBlock['nextBlockId'] ?? null;
                     if ($nextBlockId) {
                         $nextBlock = $this->findBlockById($blocks, $nextBlockId);
                         if ($nextBlock) {
@@ -231,10 +244,16 @@ class BotMapHandler
                                 'session_id' => $session->id,
                                 'current_block_id' => $currentBlock['id'] ?? null,
                                 'next_block_id' => $nextBlockId,
+                                'source' => $targetBlockId ? 'button target_block_id' : 'block nextBlockId',
                             ]);
                             $this->sessionService->updateCurrentBlock($session, $nextBlockId);
                             $this->executeBlock($bot, $session, $nextBlock, $blocks);
                             return;
+                        } else {
+                            Log::warning('Target block not found', [
+                                'session_id' => $session->id,
+                                'next_block_id' => $nextBlockId,
+                            ]);
                         }
                     } else {
                         Log::warning('No nextBlockId after saving callback value', [
