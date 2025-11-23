@@ -5,13 +5,26 @@
                 <h1 class="text-3xl font-semibold text-foreground">Telegram Bots</h1>
                 <p class="text-muted-foreground mt-1">Управление телеграм ботами</p>
             </div>
-            <button
-                @click="showCreateModal = true"
-                class="h-11 px-6 bg-accent/10 backdrop-blur-xl text-accent border border-accent/40 hover:bg-accent/20 rounded-2xl shadow-lg shadow-accent/10 inline-flex items-center justify-center gap-2"
-            >
-                <span>+</span>
-                <span>Добавить бота</span>
-            </button>
+            <div class="flex items-center gap-2">
+                <button
+                    v-if="showBotCard"
+                    @click="closeBotCard"
+                    class="h-11 px-6 bg-background/50 border border-border hover:bg-accent/10 rounded-2xl inline-flex items-center justify-center gap-2"
+                >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    <span>Назад к списку</span>
+                </button>
+                <button
+                    v-if="!showBotCard"
+                    @click="showCreateModal = true"
+                    class="h-11 px-6 bg-accent/10 backdrop-blur-xl text-accent border border-accent/40 hover:bg-accent/20 rounded-2xl shadow-lg shadow-accent/10 inline-flex items-center justify-center gap-2"
+                >
+                    <span>+</span>
+                    <span>Добавить бота</span>
+                </button>
+            </div>
         </div>
 
         <!-- Loading State -->
@@ -24,8 +37,13 @@
             <p class="text-destructive">{{ error }}</p>
         </div>
 
+        <!-- Bot Card View -->
+        <div v-if="showBotCard && selectedBot" class="space-y-6">
+            <BotCard :bot="selectedBot" @close="closeBotCard" />
+        </div>
+
         <!-- Bots Table -->
-        <div v-if="!loading && bots.length > 0" class="bg-card rounded-lg border border-border overflow-hidden">
+        <div v-if="!showBotCard && !loading && bots.length > 0" class="bg-card rounded-lg border border-border overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead class="bg-muted/30 border-b border-border">
@@ -64,6 +82,12 @@
                             <td class="px-6 py-4 text-sm text-right">
                                 <div class="flex items-center justify-end gap-2">
                                     <button
+                                        @click="openBotCard(bot)"
+                                        class="px-3 py-1 text-xs bg-purple-500 hover:bg-purple-600 text-white rounded transition-colors"
+                                    >
+                                        Настройки
+                                    </button>
+                                    <button
                                         @click="editBot(bot)"
                                         class="px-3 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
                                     >
@@ -84,7 +108,7 @@
         </div>
 
         <!-- Empty State -->
-        <div v-if="!loading && bots.length === 0" class="bg-card rounded-lg border border-border p-12 text-center">
+        <div v-if="!showBotCard && !loading && bots.length === 0" class="bg-card rounded-lg border border-border p-12 text-center">
             <p class="text-muted-foreground">Боты не найдены</p>
         </div>
 
@@ -171,9 +195,13 @@
 import { ref, onMounted } from 'vue'
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api'
 import Swal from 'sweetalert2'
+import BotCard from '../../components/admin/BotCard.vue'
 
 export default {
     name: 'Bots',
+    components: {
+        BotCard
+    },
     setup() {
         const loading = ref(false)
         const saving = ref(false)
@@ -181,6 +209,8 @@ export default {
         const bots = ref([])
         const showCreateModal = ref(false)
         const showEditModal = ref(false)
+        const showBotCard = ref(false)
+        const selectedBot = ref(null)
         const form = ref({
             id: null,
             name: '',
@@ -325,6 +355,16 @@ export default {
             }
         }
 
+        const openBotCard = (bot) => {
+            selectedBot.value = bot
+            showBotCard.value = true
+        }
+
+        const closeBotCard = () => {
+            showBotCard.value = false
+            selectedBot.value = null
+        }
+
         onMounted(() => {
             fetchBots()
         })
@@ -336,11 +376,15 @@ export default {
             bots,
             showCreateModal,
             showEditModal,
+            showBotCard,
+            selectedBot,
             form,
             editBot,
             deleteBot,
             saveBot,
             closeModal,
+            openBotCard,
+            closeBotCard,
             truncateToken
         }
     }

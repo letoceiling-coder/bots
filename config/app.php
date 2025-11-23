@@ -123,4 +123,17 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Deploy Secret Key
+    |--------------------------------------------------------------------------
+    |
+    | This key is used to secure the deploy endpoint. Set this to a random,
+    | secure string in your .env file. This key must match on both local
+    | development machine and server.
+    |
+    */
+
+    'deploy_secret' => env('DEPLOY_SECRET', null),
+
 ];

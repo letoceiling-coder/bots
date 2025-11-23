@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\BotController;
 use App\Http\Controllers\Api\v1\FolderController;
 use App\Http\Controllers\Api\v1\MediaController;
+use App\Http\Controllers\DeployController;
 use Illuminate\Support\Facades\Route;
 
 // Публичные роуты
@@ -17,6 +18,10 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
+
+// Роут для обновления проекта (защищен секретным ключом)
+Route::post('/deploy', [DeployController::class, 'deploy'])->middleware('throttle:10,1');
+Route::get('/deploy/status', [DeployController::class, 'status']);
 
 // Защищённые роуты
 Route::middleware('auth:sanctum')->group(function () {
@@ -52,7 +57,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::apiResource('users', UserController::class);
             Route::apiResource('bots', BotController::class);
             Route::get('bots/{id}/info', [BotController::class, 'getBotInfo']);
+            Route::get('bots/{id}/updates', [BotController::class, 'getBotUpdates']);
             Route::post('bots/{id}/send-message', [BotController::class, 'sendTestMessage']);
+            Route::post('bots/{id}/execute-block-method', [BotController::class, 'executeBlockMethod']);
         });
     });
 });
