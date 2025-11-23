@@ -45,9 +45,10 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Получить токен бота
      * 
-     * @return string|null
+     * @return string
+     * @throws \Exception Если токен не установлен
      */
-    protected function getBotToken(): ?string
+    protected function getBotToken(): string
     {
         // Пытаемся получить токен из установленной модели бота
         if ($this->botModel instanceof Bot && $this->botModel->token) {
@@ -61,7 +62,7 @@ class ExtendedTelegraph extends Telegraph
                 $property = $reflection->getProperty('bot');
                 $property->setAccessible(true);
                 $bot = $property->getValue($this);
-                if ($bot instanceof Bot) {
+                if ($bot instanceof Bot && $bot->token) {
                     return $bot->token;
                 }
             }
@@ -70,7 +71,13 @@ class ExtendedTelegraph extends Telegraph
         }
         
         // Пытаемся получить из конфигурации
-        return config('telegraph.bot_token');
+        $token = config('telegraph.bot_token');
+        if ($token) {
+            return $token;
+        }
+        
+        // Если токен не найден, выбрасываем исключение
+        throw new \Exception('Telegram bot token is not set');
     }
 
     /**
@@ -91,10 +98,6 @@ class ExtendedTelegraph extends Telegraph
     protected function makeRequest(string $method, array $data = []): array
     {
         $token = $this->getBotToken();
-        
-        if (!$token) {
-            throw new \Exception('Telegram bot token is not set');
-        }
 
         // Добавляем chat_id если он установлен через chat() метод
         if (isset($this->chat) && !isset($data['chat_id'])) {
@@ -353,9 +356,6 @@ class ExtendedTelegraph extends Telegraph
     public function setChatPhotoApi(string $photoPath): array
     {
         $token = $this->getBotToken();
-        if (!$token) {
-            throw new \Exception('Telegram bot token is not set');
-        }
         $url = $this->buildApiUrl($token, 'setChatPhoto');
         
         $response = Http::attach('photo', file_get_contents($photoPath), basename($photoPath))
@@ -658,9 +658,6 @@ class ExtendedTelegraph extends Telegraph
 
         $filePath = $fileInfo['result']['file_path'];
         $token = $this->getBotToken();
-        if (!$token) {
-            throw new \Exception('Telegram bot token is not set');
-        }
         $fileUrl = "https://api.telegram.org/file/bot{$token}/{$filePath}";
         
         $fileContent = Http::get($fileUrl)->body();
