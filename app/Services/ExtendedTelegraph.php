@@ -137,12 +137,42 @@ class ExtendedTelegraph extends Telegraph
             $data['text'] = $this->message;
         }
         
+        // Добавляем chat_id если он установлен через chat() метод
+        if (!isset($data['chat_id']) && isset($this->chat)) {
+            // Если $this->chat является объектом модели, получаем chat_id из него
+            if (is_object($this->chat)) {
+                // Пытаемся получить chat_id из объекта (может быть TelegraphChat или другой объект)
+                if (method_exists($this->chat, 'getChatId')) {
+                    $data['chat_id'] = $this->chat->getChatId();
+                } elseif (property_exists($this->chat, 'chat_id')) {
+                    $data['chat_id'] = $this->chat->chat_id;
+                } elseif (method_exists($this->chat, '__toString')) {
+                    $data['chat_id'] = (string)$this->chat;
+                } else {
+                    // Если не можем извлечь, используем рефлексию
+                    try {
+                        $reflection = new \ReflectionObject($this->chat);
+                        $property = $reflection->getProperty('chat_id');
+                        $property->setAccessible(true);
+                        $data['chat_id'] = $property->getValue($this->chat);
+                    } catch (\Exception $e) {
+                        // Если не удалось, пробуем просто преобразовать в строку
+                        $data['chat_id'] = (string)$this->chat;
+                    }
+                }
+            } else {
+                // Если это строка или число, используем напрямую
+                $data['chat_id'] = $this->chat;
+            }
+        }
+        
         // Логируем отправку
         Log::info('Sending Telegram message via makeRequest()', [
             'endpoint' => $endpoint,
             'data_keys' => array_keys($data),
             'has_chat' => isset($this->chat),
             'chat_value' => $this->chat ?? null,
+            'chat_id_in_data' => $data['chat_id'] ?? null,
             'bot_token_length' => strlen($this->getBotToken()),
         ]);
         
