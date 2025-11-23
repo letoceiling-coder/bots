@@ -108,12 +108,14 @@ class PushToServer extends Command
                 }
             }
 
-            // 4. Push в Git
+            // 4. Pull перед push (чтобы получить изменения с сервера)
+            $pushBranch = $branch; // Инициализируем переменную
+            
             if (!$this->option('skip-push')) {
                 $this->newLine();
-                $this->info("📤 Отправка в Git (ветка: {$branch})...");
+                $this->info("📥 Получение обновлений из Git перед отправкой...");
                 
-                // Определяем текущую ветку, если не указана
+                // Определяем текущую ветку
                 $currentBranchProcess = new SymfonyProcess(['git', 'branch', '--show-current']);
                 $currentBranchProcess->run();
                 $currentBranch = trim($currentBranchProcess->getOutput()) ?: $branch;
@@ -122,8 +124,77 @@ class PushToServer extends Command
                 $pushBranch = ($currentBranch === $branch) ? $branch : $currentBranch;
                 
                 if ($pushBranch !== $branch) {
-                    $this->warn("⚠️  Текущая ветка: {$currentBranch}, будет отправлена вместо {$branch}");
+                    $this->warn("⚠️  Текущая ветка: {$currentBranch}, будет использована вместо {$branch}");
                 }
+                
+                // Сначала делаем fetch
+                $fetchProcess = new SymfonyProcess(['git', 'fetch', 'origin']);
+                $fetchProcess->setTimeout(60);
+                $fetchProcess->run();
+                
+                if (!$fetchProcess->isSuccessful()) {
+                    $this->warn('⚠️  Не удалось получить обновления из Git, продолжаем...');
+                } else {
+                    $this->info('✅ Обновления получены');
+                }
+                
+                // Проверяем статус относительно remote
+                $statusProcess = new SymfonyProcess(['git', 'status', '-sb']);
+                $statusProcess->run();
+                $statusOutput = $statusProcess->getOutput();
+                
+                // Если есть изменения на remote (behind), делаем pull
+                if (strpos($statusOutput, 'behind') !== false) {
+                    $this->warn('⚠️  Обнаружены изменения на сервере. Выполняется pull...');
+                    
+                    // Пробуем сначала с rebase (более чистая история)
+                    $pullProcess = new SymfonyProcess(['git', 'pull', '--rebase', 'origin', $pushBranch]);
+                    $pullProcess->setTimeout(300);
+                    $pullProcess->run();
+                    
+                    if (!$pullProcess->isSuccessful()) {
+                        $errorOutput = $pullProcess->getErrorOutput();
+                        
+                        // Если rebase не удался из-за конфликтов, пробуем обычный pull
+                        if (strpos($errorOutput, 'conflict') !== false || 
+                            strpos($errorOutput, 'CONFLICT') !== false) {
+                            $this->warn('⚠️  Обнаружены конфликты при rebase. Пробуем обычный pull...');
+                            
+                            // Отменяем rebase
+                            $abortProcess = new SymfonyProcess(['git', 'rebase', '--abort']);
+                            $abortProcess->run();
+                            
+                            // Делаем обычный pull
+                            $pullProcess = new SymfonyProcess(['git', 'pull', 'origin', $pushBranch]);
+                            $pullProcess->setTimeout(300);
+                            $pullProcess->run();
+                            
+                            if (!$pullProcess->isSuccessful()) {
+                                $this->error('❌ Ошибка при получении обновлений: ' . $pullProcess->getErrorOutput());
+                                $this->warn('');
+                                $this->warn('Необходимо разрешить конфликты вручную:');
+                                $this->line("   git pull origin {$pushBranch}");
+                                $this->line('   # Разрешите конфликты');
+                                $this->line("   git push origin {$pushBranch}");
+                                return Command::FAILURE;
+                            }
+                        } else {
+                            $this->error('❌ Ошибка при получении обновлений: ' . $errorOutput);
+                            return Command::FAILURE;
+                        }
+                    }
+                    
+                    $this->info('✅ Изменения объединены');
+                } elseif (strpos($statusOutput, 'ahead') !== false && strpos($statusOutput, 'behind') === false) {
+                    // Только ahead - можно пушить
+                    $this->info('✅ Локальные изменения готовы к отправке');
+                }
+            }
+
+            // 5. Push в Git
+            if (!$this->option('skip-push')) {
+                $this->newLine();
+                $this->info("📤 Отправка в Git (ветка: {$pushBranch})...");
                 
                 $pushProcess = new SymfonyProcess(['git', 'push', 'origin', $pushBranch]);
                 $pushProcess->setTimeout(300); // 5 минут таймаут
@@ -131,17 +202,76 @@ class PushToServer extends Command
                 
                 if (!$pushProcess->isSuccessful()) {
                     $errorOutput = $pushProcess->getErrorOutput();
-                    $this->error('❌ Ошибка при отправке в Git: ' . $errorOutput);
-                    $this->warn('');
-                    $this->warn('Возможные причины:');
-                    $this->line('1. Нет доступа к репозиторию');
-                    $this->line('2. Ветка не существует на remote');
-                    $this->line('3. Нет подключения к интернету');
-                    $this->line('4. Нужно установить upstream: git push -u origin ' . $pushBranch);
-                    return Command::FAILURE;
+                    
+                    // Проверяем, нужно ли установить upstream
+                    if (strpos($errorOutput, 'no upstream branch') !== false || 
+                        strpos($errorOutput, 'set upstream') !== false ||
+                        strpos($errorOutput, 'upstream') !== false) {
+                        $this->warn('⚠️  Ветка не имеет upstream. Устанавливаем...');
+                        
+                        $setUpstreamProcess = new SymfonyProcess([
+                            'git', 
+                            'push', 
+                            '-u', 
+                            'origin', 
+                            $pushBranch
+                        ]);
+                        $setUpstreamProcess->setTimeout(300);
+                        $setUpstreamProcess->run();
+                        
+                        if ($setUpstreamProcess->isSuccessful()) {
+                            $this->info('✅ Upstream установлен, изменения отправлены');
+                        } else {
+                            $this->error('❌ Ошибка при установке upstream: ' . $setUpstreamProcess->getErrorOutput());
+                            return Command::FAILURE;
+                        }
+                    } elseif (strpos($errorOutput, 'rejected') !== false && 
+                              strpos($errorOutput, 'fetch first') !== false) {
+                        // Ошибка "rejected - fetch first" - нужно еще раз попробовать pull
+                        $this->warn('⚠️  Обнаружены новые изменения на сервере. Повторная попытка pull...');
+                        
+                        $pullProcess = new SymfonyProcess(['git', 'pull', 'origin', $pushBranch]);
+                        $pullProcess->setTimeout(300);
+                        $pullProcess->run();
+                        
+                        if ($pullProcess->isSuccessful()) {
+                            // Пробуем push снова
+                            $pushProcess = new SymfonyProcess(['git', 'push', 'origin', $pushBranch]);
+                            $pushProcess->setTimeout(300);
+                            $pushProcess->run();
+                            
+                            if ($pushProcess->isSuccessful()) {
+                                $this->info('✅ Изменения отправлены в Git после повторного pull');
+                            } else {
+                                $this->error('❌ Ошибка при отправке после pull: ' . $pushProcess->getErrorOutput());
+                                return Command::FAILURE;
+                            }
+                        } else {
+                            $this->error('❌ Ошибка при повторном pull: ' . $pullProcess->getErrorOutput());
+                            $this->warn('');
+                            $this->warn('Необходимо разрешить конфликты вручную:');
+                            $this->line("   git pull origin {$pushBranch}");
+                            $this->line('   # Разрешите конфликты');
+                            $this->line("   git push origin {$pushBranch}");
+                            return Command::FAILURE;
+                        }
+                    } else {
+                        $this->error('❌ Ошибка при отправке в Git: ' . $errorOutput);
+                        $this->warn('');
+                        $this->warn('Возможные причины:');
+                        $this->line('1. Нет доступа к репозиторию');
+                        $this->line('2. Ветка не существует на remote');
+                        $this->line('3. Нет подключения к интернету');
+                        $this->line('4. Конфликты, которые нужно разрешить вручную');
+                        $this->line('');
+                        $this->line('Попробуйте выполнить вручную:');
+                        $this->line("   git pull origin {$pushBranch}");
+                        $this->line("   git push origin {$pushBranch}");
+                        return Command::FAILURE;
+                    }
+                } else {
+                    $this->info('✅ Изменения отправлены в Git');
                 }
-                
-                $this->info('✅ Изменения отправлены в Git');
             }
 
             // 5. Отправка запроса на сервер для обновления
