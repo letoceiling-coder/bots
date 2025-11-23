@@ -122,7 +122,7 @@ class ExtendedTelegraph extends Telegraph
 
     /**
      * Отправить запрос (переопределяем метод родительского класса)
-     * Использует родительский метод для правильной обработки данных
+     * Использует наш makeRequest для правильной обработки токена и данных
      * 
      * @return TelegraphResponse
      */
@@ -135,38 +135,53 @@ class ExtendedTelegraph extends Telegraph
         // Добавляем текст сообщения, если он установлен через message()
         if (isset($this->message) && !isset($data['text'])) {
             $data['text'] = $this->message;
-            $this->data = $data;
         }
         
         // Логируем отправку
-        Log::info('Sending Telegram message via parent send()', [
+        Log::info('Sending Telegram message via makeRequest()', [
             'endpoint' => $endpoint,
             'data_keys' => array_keys($data),
             'has_chat' => isset($this->chat),
             'chat_value' => $this->chat ?? null,
-            'data' => $data,
+            'bot_token_length' => strlen($this->getBotToken()),
         ]);
         
-        // Вызываем родительский метод send()
+        // Используем наш makeRequest для отправки
         try {
-            $result = parent::send();
+            $token = $this->getBotToken();
+            $url = $this->buildApiUrl($token, $endpoint);
+            
+            // Выполняем HTTP запрос напрямую
+            $response = Http::post($url, $data);
+            
+            // Создаем объект TelegraphResponse из HTTP ответа
+            $telegraphResponse = TelegraphResponse::fromResponse($response);
+            
+            // Получаем результат для логирования
+            $result = $response->json();
             
             // Логируем результат
-            $isSuccessful = $result->successful();
+            $isSuccessful = isset($result['ok']) && $result['ok'] === true;
             $logData = [
                 'endpoint' => $endpoint,
                 'success' => $isSuccessful,
-                'message_id' => $result->telegraphMessageId() ?? null,
+                'message_id' => $result['result']['message_id'] ?? null,
             ];
             
             // Если запрос не успешен, логируем ошибку
             if (!$isSuccessful) {
-                $logData['error'] = $result->json('description') ?? $result->json('error_code') ?? 'Unknown error';
-                $logData['full_response'] = $result->json();
+                $logData['error'] = $result['description'] ?? $result['error_code'] ?? 'Unknown error';
+                $logData['full_response'] = $result;
                 Log::error('Telegram message send failed', $logData);
             } else {
                 Log::info('Telegram message sent', $logData);
             }
+            
+            // Очищаем данные после отправки
+            $this->data = [];
+            $this->message = null;
+            
+            return $telegraphResponse;
         } catch (\Exception $e) {
             Log::error('Exception while sending Telegram message', [
                 'endpoint' => $endpoint,
@@ -175,12 +190,6 @@ class ExtendedTelegraph extends Telegraph
             ]);
             throw $e;
         }
-        
-        // Очищаем данные после отправки (не трогаем endpoint, так как родительский класс управляет им)
-        $this->data = [];
-        $this->message = null;
-        
-        return $result;
     }
 
     /**
