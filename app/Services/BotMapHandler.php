@@ -166,6 +166,86 @@ class BotMapHandler
         $targetBlock = $this->findBlockByCallbackData($blocks, $callbackData);
 
         if (!$targetBlock) {
+            // Если блок не найден, возможно callback_data - это значение для сохранения
+            // в текущем блоке (например, выбор ОПФ)
+            $currentBlock = $this->getCurrentBlock($session, $blocks);
+            
+            if ($currentBlock && ($currentBlock['method'] === 'inlineKeyboard' || $currentBlock['method'] === 'question')) {
+                Log::info('Callback_data is a value to save, not a block ID', [
+                    'bot_id' => $bot->id,
+                    'callback_data' => $callbackData,
+                    'current_block_id' => $currentBlock['id'] ?? null,
+                    'current_block_method' => $currentBlock['method'] ?? null,
+                ]);
+
+                // Проверяем, что кнопка с таким callback_data существует в текущем блоке
+                $methodData = $currentBlock['methodData'] ?? $currentBlock['method_data'] ?? [];
+                $inlineKeyboard = $methodData['inline_keyboard'] ?? [];
+                $buttonFound = false;
+                
+                foreach ($inlineKeyboard as $row) {
+                    foreach ($row as $button) {
+                        if (($button['callback_data'] ?? null) === $callbackData) {
+                            $buttonFound = true;
+                            break 2;
+                        }
+                    }
+                }
+
+                if ($buttonFound) {
+                    // Сохраняем callback_data как данные сессии
+                    $dataKey = $currentBlock['data_key'] ?? strtolower(str_replace([' ', '-'], '_', $currentBlock['label'] ?? 'answer'));
+                    
+                    // Если callback_data начинается с префикса (например, opf_ip), извлекаем значение
+                    $value = $callbackData;
+                    if (str_contains($callbackData, '_')) {
+                        $parts = explode('_', $callbackData, 2);
+                        $value = $parts[1] ?? $callbackData;
+                    }
+
+                    Log::info('Saving callback_data as session data', [
+                        'session_id' => $session->id,
+                        'data_key' => $dataKey,
+                        'value' => $value,
+                        'callback_data' => $callbackData,
+                    ]);
+
+                    $this->sessionService->saveSessionData($session, $dataKey, $value, $currentBlock['id'] ?? null);
+
+                    // Создаем шаг
+                    $step = $this->sessionService->createStep(
+                        $session,
+                        $currentBlock['id'] ?? null,
+                        $currentBlock['label'] ?? null,
+                        $currentBlock['method'] ?? null,
+                        'callback',
+                        $callbackData
+                    );
+
+                    // Переходим к следующему блоку
+                    $nextBlockId = $currentBlock['nextBlockId'] ?? null;
+                    if ($nextBlockId) {
+                        $nextBlock = $this->findBlockById($blocks, $nextBlockId);
+                        if ($nextBlock) {
+                            Log::info('Moving to next block after saving callback value', [
+                                'session_id' => $session->id,
+                                'current_block_id' => $currentBlock['id'] ?? null,
+                                'next_block_id' => $nextBlockId,
+                            ]);
+                            $this->sessionService->updateCurrentBlock($session, $nextBlockId);
+                            $this->executeBlock($bot, $session, $nextBlock, $blocks);
+                            return;
+                        }
+                    } else {
+                        Log::warning('No nextBlockId after saving callback value', [
+                            'session_id' => $session->id,
+                            'current_block_id' => $currentBlock['id'] ?? null,
+                        ]);
+                    }
+                    return;
+                }
+            }
+
             Log::warning('Block not found by callback_data', [
                 'bot_id' => $bot->id,
                 'callback_data' => $callbackData,
