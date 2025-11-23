@@ -20,15 +20,58 @@ class TelegramWebhookController extends Controller
     /**
      * Обработка webhook от Telegram
      * Роут: POST /api/telegram/webhook/{bot_id}
+     * GET - для проверки доступности endpoint
      */
     public function handle(Request $request, string $botId)
     {
-        // Логируем входящий запрос
+        // Определяем метод запроса (GET, HEAD, POST)
+        $method = $request->method();
+        
+        // Для GET и HEAD запросов (проверка доступности endpoint)
+        if (in_array($method, ['GET', 'HEAD'])) {
+            try {
+                $bot = Bot::find($botId);
+                
+                $response = [
+                    'status' => 'ok',
+                    'message' => 'Webhook endpoint is active',
+                    'bot_id' => $botId,
+                    'bot_name' => $bot ? $bot->name : 'not found',
+                    'bot_active' => $bot ? ($bot->is_active ?? false) : false,
+                    'method' => $method,
+                    'note' => 'This endpoint accepts POST requests from Telegram',
+                    'webhook_url' => url("/api/telegram/webhook/{$botId}"),
+                    'timestamp' => now()->toIso8601String(),
+                ];
+                
+                return response()->json($response, 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            } catch (\Exception $e) {
+                Log::error('Error in webhook GET/HEAD request', [
+                    'bot_id' => $botId,
+                    'method' => $method,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Internal server error',
+                    'error' => $e->getMessage(),
+                ], 500, [], JSON_PRETTY_PRINT);
+            }
+        }
+        
+        // Логируем входящий POST запрос от Telegram
+        $rawUpdate = $request->all();
         Log::info('Telegram webhook received', [
             'bot_id' => $botId,
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'request_size' => $request->header('Content-Length'),
+            'method' => 'POST',
+            'update_keys' => array_keys($rawUpdate),
+            'has_callback_query' => isset($rawUpdate['callback_query']),
+            'has_message' => isset($rawUpdate['message']),
         ]);
 
         try {
@@ -62,13 +105,24 @@ class TelegramWebhookController extends Controller
 
             // Логируем обновление
             $update = $request->all();
-            Log::info('Processing Telegram update', [
+            $updateType = $this->getUpdateType($update);
+            $logData = [
                 'bot_id' => $bot->id,
                 'bot_name' => $bot->name,
                 'update_id' => $update['update_id'] ?? null,
-                'update_type' => $this->getUpdateType($update),
+                'update_type' => $updateType,
                 'chat_id' => $this->getChatId($update),
-            ]);
+            ];
+
+            // Добавляем детальную информацию для callback_query
+            if ($updateType === 'callback_query' && isset($update['callback_query'])) {
+                $logData['callback_query_id'] = $update['callback_query']['id'] ?? null;
+                $logData['callback_data'] = $update['callback_query']['data'] ?? null;
+                $logData['from_user_id'] = $update['callback_query']['from']['id'] ?? null;
+                $logData['from_username'] = $update['callback_query']['from']['username'] ?? null;
+            }
+
+            Log::info('Processing Telegram update', $logData);
 
             // Обрабатываем обновление
             $this->mapHandler->handleUpdate($bot, $update);

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Bot;
 use App\Models\BotSession;
+use App\Models\BotSessionStep;
 use App\Services\BotSessionService;
 use App\Services\TelegramBotService;
 use Illuminate\Support\Facades\Log;
@@ -60,11 +61,13 @@ class BotMapHandler
         Log::info('Handling message', [
             'bot_id' => $bot->id,
             'chat_id' => $chatId,
+            'text' => $text,
             'has_text' => !empty($text),
             'has_document' => !empty($document),
             'has_photo' => !empty($photo),
             'has_contact' => !empty($contact),
             'has_location' => !empty($location),
+            'is_command' => !empty($text) && str_starts_with($text, '/'),
         ]);
 
         // Получаем или создаем сессию
@@ -77,19 +80,31 @@ class BotMapHandler
             return;
         }
 
-        // Определяем текущий блок
-        $currentBlock = $this->getCurrentBlock($session, $blocks);
-
+        // Определяем текущий блок (для всех типов сообщений, кроме команд)
+        $currentBlock = null;
+        
         // Обрабатываем входящие данные
         if ($text) {
-            $this->handleTextInput($bot, $session, $currentBlock, $blocks, $text);
+            // Проверяем, является ли текст командой (начинается с /)
+            if (str_starts_with($text, '/')) {
+                $this->handleCommand($bot, $session, $blocks, $text);
+                return; // Команды обрабатываются отдельно
+            } else {
+                // Определяем текущий блок для обычного текста
+                $currentBlock = $this->getCurrentBlock($session, $blocks);
+                $this->handleTextInput($bot, $session, $currentBlock, $blocks, $text);
+            }
         } elseif ($document) {
+            $currentBlock = $this->getCurrentBlock($session, $blocks);
             $this->handleFileInput($bot, $session, $currentBlock, $blocks, 'document', $document);
         } elseif ($photo) {
+            $currentBlock = $this->getCurrentBlock($session, $blocks);
             $this->handleFileInput($bot, $session, $currentBlock, $blocks, 'photo', $photo);
         } elseif ($contact) {
+            $currentBlock = $this->getCurrentBlock($session, $blocks);
             $this->handleContactInput($bot, $session, $currentBlock, $blocks, $contact);
         } elseif ($location) {
+            $currentBlock = $this->getCurrentBlock($session, $blocks);
             $this->handleLocationInput($bot, $session, $currentBlock, $blocks, $location);
         }
     }
@@ -102,21 +117,39 @@ class BotMapHandler
         $message = $callbackQuery['message'] ?? [];
         $chatId = $message['chat']['id'] ?? null;
         $callbackData = $callbackQuery['data'] ?? null;
+        $callbackQueryId = $callbackQuery['id'] ?? null;
         $userData = $callbackQuery['from'] ?? [];
 
         Log::info('Handling callback query', [
             'bot_id' => $bot->id,
             'chat_id' => $chatId,
+            'callback_query_id' => $callbackQueryId,
             'callback_data' => $callbackData,
+            'full_callback_query' => $callbackQuery,
         ]);
 
-        if (!$chatId || !$callbackData) {
+        if (!$chatId || !$callbackData || !$callbackQueryId) {
             Log::warning('Invalid callback query', [
                 'bot_id' => $bot->id,
                 'chat_id' => $chatId,
                 'callback_data' => $callbackData,
+                'callback_query_id' => $callbackQueryId,
             ]);
             return;
+        }
+
+        // Отвечаем на callback_query сразу (обязательно для Telegram)
+        $telegraph = $this->telegramService->bot($bot);
+        try {
+            $telegraph->answerCallbackQuery($callbackQueryId);
+            Log::debug('Answered callback query', [
+                'callback_query_id' => $callbackQueryId,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to answer callback query', [
+                'callback_query_id' => $callbackQueryId,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         // Получаем или создаем сессию
@@ -136,9 +169,17 @@ class BotMapHandler
             Log::warning('Block not found by callback_data', [
                 'bot_id' => $bot->id,
                 'callback_data' => $callbackData,
+                'available_blocks' => array_map(fn($b) => $b['id'] ?? null, $blocks),
             ]);
             return;
         }
+
+        Log::info('Target block found for callback', [
+            'bot_id' => $bot->id,
+            'callback_data' => $callbackData,
+            'target_block_id' => $targetBlock['id'] ?? null,
+            'target_block_label' => $targetBlock['label'] ?? null,
+        ]);
 
         // Создаем шаг
         $step = $this->sessionService->createStep(
@@ -155,6 +196,89 @@ class BotMapHandler
 
         // Выполняем блок
         $this->executeBlock($bot, $session, $targetBlock, $blocks, $step);
+    }
+
+    /**
+     * Обработать команду бота
+     */
+    protected function handleCommand(
+        Bot $bot,
+        BotSession $session,
+        array $blocks,
+        string $command
+    ): void {
+        Log::info('Handling bot command', [
+            'session_id' => $session->id,
+            'bot_id' => $bot->id,
+            'chat_id' => $session->chat_id,
+            'command' => $command,
+            'total_blocks' => count($blocks),
+        ]);
+
+        // Находим блок с такой командой
+        $commandBlock = null;
+        foreach ($blocks as $block) {
+            if (isset($block['command']) && $block['command'] === $command) {
+                $commandBlock = $block;
+                break;
+            }
+        }
+
+        if (!$commandBlock) {
+            Log::warning('Command block not found', [
+                'session_id' => $session->id,
+                'command' => $command,
+            ]);
+            
+            // Отправляем сообщение об ошибке
+            try {
+                $telegraph = $this->telegramService->bot($bot)->chat($session->chat_id);
+                $telegraph->message("Команда не найдена. Используйте /start для начала.")->send();
+            } catch (\Exception $e) {
+                Log::error('Error sending error message', [
+                    'session_id' => $session->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            return;
+        }
+
+        Log::info('Command block found', [
+            'session_id' => $session->id,
+            'command' => $command,
+            'block_id' => $commandBlock['id'] ?? null,
+        ]);
+
+        // Создаем шаг для команды
+        $step = $this->sessionService->createStep(
+            $session,
+            $commandBlock['id'] ?? null,
+            $commandBlock['label'] ?? null,
+            $commandBlock['method'] ?? null,
+            'command',
+            $command
+        );
+
+        // Обновляем текущий блок на блок команды
+        $this->sessionService->updateCurrentBlock($session, $commandBlock['id'] ?? null);
+
+        // Выполняем блок команды
+        $this->executeBlock($bot, $session, $commandBlock, $blocks, $step);
+
+        // После выполнения команды переходим к следующему блоку, если указан
+        $nextBlockId = $commandBlock['nextBlockId'] ?? null;
+        if ($nextBlockId) {
+            $nextBlock = $this->findBlockById($blocks, $nextBlockId);
+            if ($nextBlock) {
+                Log::info('Moving to next block after command', [
+                    'session_id' => $session->id,
+                    'command' => $command,
+                    'next_block_id' => $nextBlockId,
+                ]);
+                $this->sessionService->updateCurrentBlock($session, $nextBlockId);
+                $this->executeBlock($bot, $session, $nextBlock, $blocks);
+            }
+        }
     }
 
     /**
@@ -321,7 +445,17 @@ class BotMapHandler
         ]);
 
         $method = $block['method'] ?? null;
-        $methodData = $block['method_data'] ?? [];
+        // Поддержка как method_data (snake_case), так и methodData (camelCase)
+        $methodData = $block['method_data'] ?? $block['methodData'] ?? [];
+        
+        Log::debug('Block method data', [
+            'session_id' => $session->id,
+            'block_id' => $block['id'] ?? null,
+            'has_method_data' => isset($block['method_data']),
+            'has_methodData' => isset($block['methodData']),
+            'method_data_keys' => array_keys($methodData),
+            'text_length' => strlen($methodData['text'] ?? ''),
+        ]);
 
         if (!$method) {
             Log::warning('Block has no method', [

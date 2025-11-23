@@ -26,7 +26,8 @@ Route::post('/deploy', [DeployController::class, 'deploy'])->middleware('throttl
 Route::get('/deploy/status', [DeployController::class, 'status']);
 
 // Webhook для Telegram ботов (публичный, без авторизации)
-Route::post('/telegram/webhook/{bot_id}', [TelegramWebhookController::class, 'handle'])
+// GET - для проверки статуса, POST - для получения обновлений от Telegram
+Route::match(['GET', 'POST'], '/telegram/webhook/{bot_id}', [TelegramWebhookController::class, 'handle'])
     ->name('telegram.webhook')
     ->middleware('throttle:60,1');
 

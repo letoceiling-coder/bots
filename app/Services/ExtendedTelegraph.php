@@ -735,6 +735,71 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
+     * Ответить на callback query (обязательно для всех callback_query)
+     * 
+     * @param string $callbackQueryId ID callback query
+     * @param string|null $text Текст ответа (опционально)
+     * @param bool $showAlert Показать алерт вместо уведомления
+     * @param string|null $url URL для открытия
+     * @param int $cacheTime Время кэширования ответа в секундах
+     * @return array
+     */
+    public function answerCallbackQuery(
+        string $callbackQueryId,
+        ?string $text = null,
+        bool $showAlert = false,
+        ?string $url = null,
+        int $cacheTime = 0
+    ): array {
+        $token = $this->getBotToken();
+        $url = $this->buildApiUrl($token, 'answerCallbackQuery');
+
+        $data = [
+            'callback_query_id' => $callbackQueryId,
+        ];
+
+        if ($text !== null) {
+            $data['text'] = $text;
+        }
+
+        if ($showAlert) {
+            $data['show_alert'] = true;
+        }
+
+        if ($url !== null) {
+            $data['url'] = $url;
+        }
+
+        if ($cacheTime > 0) {
+            $data['cache_time'] = $cacheTime;
+        }
+
+        try {
+            $response = Http::post($url, $data);
+            $result = $response->json();
+
+            if (!$response->successful() || (isset($result['ok']) && !$result['ok'])) {
+                Log::error('Failed to answer callback query', [
+                    'callback_query_id' => $callbackQueryId,
+                    'response' => $result,
+                ]);
+            } else {
+                Log::debug('Callback query answered', [
+                    'callback_query_id' => $callbackQueryId,
+                ]);
+            }
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Exception while answering callback query', [
+                'callback_query_id' => $callbackQueryId,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Отправить локацию (venue)
      * 
      * @param float $latitude Широта
