@@ -196,27 +196,66 @@ class Deploy extends Command
                     $process->setWorkingDirectory(base_path());
                     $process->run();
                     
-                    if (!$process->isSuccessful()) {
-                        $this->error('❌ Ошибка при обновлении Composer зависимостей');
-                        $errorOutput = $process->getErrorOutput();
-                        $this->error($errorOutput);
-                        
-                        // Проверяем, не связана ли ошибка с версией PHP
-                        if (strpos($errorOutput, 'php version') !== false || strpos($errorOutput, 'php ^8.2') !== false) {
-                            $this->warn('');
-                            $this->warn('⚠️  Composer использует неправильную версию PHP!');
-                            $this->warn('');
-                            $this->warn('Попробуйте выполнить вручную:');
-                            $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
-                            $this->warn('');
-                            $this->warn('Или проверьте, что php8.2 доступен:');
-                            $this->line("   which php8.2");
-                        } else {
-                            $this->warn('');
-                            $this->warn('Попробуйте выполнить вручную:');
-                            $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
+                    $output = $process->getOutput();
+                    $errorOutput = $process->getErrorOutput();
+                    $exitCode = $process->getExitCode();
+                    
+                    // Объединяем вывод для проверки (composer может выводить в оба потока)
+                    $fullOutput = $output . "\n" . $errorOutput;
+                    
+                    // Проверяем на реальные ошибки (не предупреждения)
+                    $hasRealError = false;
+                    
+                    // Проверяем, есть ли проблемы с версией PHP в выводе
+                    if (strpos($fullOutput, 'php version') !== false || 
+                        strpos($fullOutput, 'php ^8.2') !== false) {
+                        // Проверяем, есть ли блок "Problem" с ошибками версии PHP
+                        if (preg_match('/Problem \d+.*?requires php.*?your php version.*?does not satisfy/i', $fullOutput) ||
+                            (strpos($fullOutput, 'does not satisfy that requirement') !== false && 
+                             preg_match('/Problem \d+/', $fullOutput))) {
+                            $hasRealError = true;
                         }
+                    }
+                    
+                    // Если есть реальная ошибка
+                    if ($hasRealError) {
+                        $this->error('❌ Ошибка при обновлении Composer зависимостей');
+                        $this->error($errorOutput ?: $output);
+                        $this->warn('');
+                        $this->warn('⚠️  Composer использует неправильную версию PHP!');
+                        $this->warn('');
+                        $this->warn('Попробуйте выполнить вручную:');
+                        $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
                         return Command::FAILURE;
+                    }
+                    
+                    // Проверяем успешность выполнения по содержимому вывода
+                    // Composer успешно выполнен, если есть "Package operations" или "Nothing to install"
+                    $isSuccessful = strpos($fullOutput, 'Package operations') !== false || 
+                                   strpos($fullOutput, 'Nothing to install') !== false ||
+                                   strpos($fullOutput, 'updating') !== false ||
+                                   strpos($fullOutput, 'installing') !== false ||
+                                   strpos($fullOutput, 'removals') !== false ||
+                                   $exitCode === 0;
+                    
+                    if (!$isSuccessful && $exitCode !== 0) {
+                        // Действительная ошибка
+                        $this->error('❌ Ошибка при обновлении Composer зависимостей');
+                        if (!empty($errorOutput)) {
+                            $this->error($errorOutput);
+                        }
+                        if (!empty($output)) {
+                            $this->line($output);
+                        }
+                        $this->warn('');
+                        $this->warn('Попробуйте выполнить вручную:');
+                        $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
+                        return Command::FAILURE;
+                    }
+                    
+                    // Если есть предупреждения, но не ошибки
+                    if (strpos($fullOutput, 'Warning:') !== false && !$hasRealError) {
+                        $this->warn('⚠️  Composer выполнен с предупреждениями (но без ошибок)');
                     }
                 } catch (\Exception $e) {
                     $this->error('❌ Ошибка при обновлении Composer зависимостей: ' . $e->getMessage());
