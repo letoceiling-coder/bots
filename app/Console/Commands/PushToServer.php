@@ -391,14 +391,51 @@ class PushToServer extends Command
                         $this->info('   Статус: Выполняется обновление');
                     }
                 } else {
-                    $errorData = $response->json();
-                    $errorMessage = $errorData['message'] ?? 'Неизвестная ошибка';
+                    $statusCode = $response->status();
+                    $body = $response->body();
                     
-                    $this->error('❌ Ошибка при отправке запроса на сервер');
-                    $this->error('   ' . $errorMessage);
+                    // Пытаемся получить JSON данные
+                    $errorData = null;
+                    try {
+                        $errorData = $response->json();
+                    } catch (\Exception $e) {
+                        // Если не JSON, используем тело ответа как есть
+                    }
                     
-                    if (isset($errorData['error'])) {
+                    $this->error("❌ Ошибка при отправке запроса на сервер (HTTP {$statusCode})");
+                    
+                    // Показываем сообщение из JSON если есть
+                    if ($errorData && isset($errorData['message'])) {
+                        $this->error('   ' . $errorData['message']);
+                    } elseif ($errorData && isset($errorData['error'])) {
+                        $this->error('   ' . $errorData['error']);
+                    } elseif (!empty($body)) {
+                        // Показываем тело ответа если есть
+                        $this->error('   Ответ сервера: ' . substr($body, 0, 200));
+                    } else {
+                        $this->error('   Неизвестная ошибка');
+                    }
+                    
+                    // Показываем дополнительные детали
+                    if ($errorData && isset($errorData['error'])) {
                         $this->error('   Детали: ' . $errorData['error']);
+                    }
+                    
+                    // Специальные сообщения для разных статус кодов
+                    if ($statusCode === 403) {
+                        $this->warn('');
+                        $this->warn('💡 Это ошибка авторизации. Проверьте:');
+                        $this->line('   1. Секретный ключ в .env (DEPLOY_SECRET)');
+                        $this->line('   2. Секретный ключ на сервере должен совпадать');
+                        $this->line('   3. Используйте: php artisan push:server --secret=YOUR_SECRET');
+                    } elseif ($statusCode === 404) {
+                        $this->warn('');
+                        $this->warn('💡 Endpoint не найден. Проверьте:');
+                        $this->line("   1. URL сервера: {$serverUrl}");
+                        $this->line('   2. Роут /api/deploy должен быть доступен');
+                    } elseif ($statusCode === 500) {
+                        $this->warn('');
+                        $this->warn('💡 Внутренняя ошибка сервера. Проверьте логи на сервере.');
                     }
                     
                     return Command::FAILURE;
