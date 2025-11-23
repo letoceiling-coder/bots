@@ -149,21 +149,54 @@ class Deploy extends Command
                 $this->newLine();
                 $this->info('📦 Обновление Composer зависимостей...');
                 
+                // Определяем версию PHP и путь к composer
+                $phpVersion = $this->detectPhpVersion();
+                $composerPath = $this->detectComposerPath();
+                
+                // Формируем команду
+                if ($phpVersion && $composerPath) {
+                    $composerCommand = "{$phpVersion} {$composerPath}";
+                } elseif ($phpVersion) {
+                    $composerCommand = "{$phpVersion} composer";
+                } elseif ($composerPath) {
+                    $composerCommand = $composerPath;
+                } else {
+                    $composerCommand = 'composer';
+                }
+                
                 try {
-                    $result = Process::run('composer install --no-dev --optimize-autoloader');
+                    $result = Process::run("{$composerCommand} install --no-dev --optimize-autoloader");
                     
                     if (!$result->successful()) {
                         $this->error('❌ Ошибка при обновлении Composer зависимостей');
                         $this->error($result->errorOutput());
+                        $this->warn('');
+                        $this->warn('Попробуйте выполнить вручную:');
+                        $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
                         return Command::FAILURE;
                     }
                 } catch (\Exception $e) {
-                    $process = new SymfonyProcess(['composer', 'install', '--no-dev', '--optimize-autoloader']);
+                    // Попробуем с явным указанием PHP и composer
+                    $command = [];
+                    if ($phpVersion) {
+                        $command[] = $phpVersion;
+                    }
+                    if ($composerPath) {
+                        $command[] = $composerPath;
+                    } else {
+                        $command[] = 'composer';
+                    }
+                    $command = array_merge($command, ['install', '--no-dev', '--optimize-autoloader']);
+                    
+                    $process = new SymfonyProcess($command);
                     $process->run();
                     
                     if (!$process->isSuccessful()) {
                         $this->error('❌ Ошибка при обновлении Composer зависимостей');
                         $this->error($process->getErrorOutput());
+                        $this->warn('');
+                        $this->warn('Попробуйте выполнить вручную:');
+                        $this->line("   {$composerCommand} install --no-dev --optimize-autoloader");
                         return Command::FAILURE;
                     }
                 }
@@ -177,8 +210,16 @@ class Deploy extends Command
                 $this->newLine();
                 $this->info('📦 Обновление NPM зависимостей...');
                 
+                // Загружаем nvm если доступен
+                $nvmCommand = $this->getNvmCommand();
+                $npmCommand = $nvmCommand ? "{$nvmCommand} && npm" : 'npm';
+                
                 try {
-                    $result = Process::run('npm install --production');
+                    if ($nvmCommand) {
+                        $result = Process::run("{$nvmCommand} && npm install");
+                    } else {
+                        $result = Process::run('npm install');
+                    }
                     
                     if (!$result->successful()) {
                         $this->error('❌ Ошибка при обновлении NPM зависимостей');
@@ -186,7 +227,11 @@ class Deploy extends Command
                         return Command::FAILURE;
                     }
                 } catch (\Exception $e) {
-                    $process = new SymfonyProcess(['npm', 'install', '--production']);
+                    $command = $nvmCommand 
+                        ? ['bash', '-c', "{$nvmCommand} && npm install"]
+                        : ['npm', 'install'];
+                    
+                    $process = new SymfonyProcess($command);
                     $process->run();
                     
                     if (!$process->isSuccessful()) {
@@ -205,8 +250,15 @@ class Deploy extends Command
                 $this->newLine();
                 $this->info('🔨 Сборка фронтенда...');
                 
+                // Загружаем nvm если доступен
+                $nvmCommand = $this->getNvmCommand();
+                
                 try {
-                    $result = Process::run('npm run build');
+                    if ($nvmCommand) {
+                        $result = Process::run("{$nvmCommand} && npm run build");
+                    } else {
+                        $result = Process::run('npm run build');
+                    }
                     
                     if (!$result->successful()) {
                         $this->error('❌ Ошибка при сборке фронтенда');
@@ -214,7 +266,11 @@ class Deploy extends Command
                         return Command::FAILURE;
                     }
                 } catch (\Exception $e) {
-                    $process = new SymfonyProcess(['npm', 'run', 'build']);
+                    $command = $nvmCommand 
+                        ? ['bash', '-c', "{$nvmCommand} && npm run build"]
+                        : ['npm', 'run', 'build'];
+                    
+                    $process = new SymfonyProcess($command);
                     $process->run();
                     
                     if (!$process->isSuccessful()) {
@@ -270,6 +326,105 @@ class Deploy extends Command
             $this->error('❌ Ошибка: ' . $e->getMessage());
             return Command::FAILURE;
         }
+    }
+
+    /**
+     * Определить версию PHP для использования
+     */
+    protected function detectPhpVersion(): ?string
+    {
+        // Проверяем текущую версию PHP
+        $currentPhp = PHP_VERSION;
+        if (version_compare($currentPhp, '8.2', '>=')) {
+            return null; // Используем текущий PHP
+        }
+        
+        // Если текущая версия меньше 8.2, ищем php8.2
+        $phpVersions = ['php8.2', 'php82', '/usr/bin/php8.2', '/usr/local/bin/php8.2'];
+        
+        foreach ($phpVersions as $phpVersion) {
+            try {
+                // Проверяем через which или напрямую
+                if (strpos($phpVersion, '/') === 0) {
+                    // Это полный путь
+                    if (file_exists($phpVersion) && is_executable($phpVersion)) {
+                        return $phpVersion;
+                    }
+                } else {
+                    // Это команда, проверяем через which
+                    $process = new SymfonyProcess(['which', $phpVersion]);
+                    $process->run();
+                    
+                    if ($process->isSuccessful()) {
+                        $path = trim($process->getOutput());
+                        if (!empty($path)) {
+                            return $phpVersion;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                continue;
+            }
+        }
+        
+        // Если не нашли, возвращаем null (будет использован системный PHP)
+        return null;
+    }
+
+    /**
+     * Определить путь к composer
+     */
+    protected function detectComposerPath(): ?string
+    {
+        // Стандартные пути к composer
+        $composerPaths = [
+            '/home/d/dsc23ytp/.local/bin/composer',
+            '~/.local/bin/composer',
+            '/usr/local/bin/composer',
+            '/usr/bin/composer',
+        ];
+        
+        foreach ($composerPaths as $path) {
+            // Заменяем ~ на домашнюю директорию
+            if (strpos($path, '~') === 0) {
+                $path = str_replace('~', getenv('HOME') ?: getenv('USERPROFILE') ?: '/home/' . get_current_user(), $path);
+            }
+            
+            if (file_exists($path) && is_executable($path)) {
+                return $path;
+            }
+        }
+        
+        // Попробуем найти через which
+        try {
+            $process = new SymfonyProcess(['which', 'composer']);
+            $process->run();
+            
+            if ($process->isSuccessful()) {
+                $path = trim($process->getOutput());
+                if (!empty($path) && file_exists($path)) {
+                    return $path;
+                }
+            }
+        } catch (\Exception $e) {
+            // Игнорируем ошибку
+        }
+        
+        return null;
+    }
+
+    /**
+     * Получить команду для загрузки nvm
+     */
+    protected function getNvmCommand(): ?string
+    {
+        $nvmDir = getenv('NVM_DIR') ?: (getenv('HOME') . '/.nvm');
+        
+        if (file_exists($nvmDir . '/nvm.sh')) {
+            return "export NVM_DIR=\"{$nvmDir}\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && nvm use default";
+        }
+        
+        return null;
     }
 }
 
