@@ -143,20 +143,14 @@ class ExtendedTelegraph extends Telegraph
      * Установить текст сообщения
      * 
      * @param string $message Текст сообщения
-     * @return $this
+     * @return Telegraph
      */
-    public function message(string $message): self
+    public function message(string $message): Telegraph
     {
-        // Пытаемся вызвать родительский метод, если он существует
-        try {
-            if (method_exists(parent::class, 'message')) {
-                return parent::message($message);
-            }
-        } catch (\Exception $e) {
-            // Игнорируем, если метод не существует
-        }
+        // Вызываем родительский метод
+        $result = parent::message($message);
         
-        // Устанавливаем текст сообщения
+        // Сохраняем текст для нашего использования
         $this->message = $message;
         $this->endpoint = 'sendMessage';
         
@@ -171,28 +165,24 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Установить клавиатуру ответа (reply keyboard)
      * 
-     * @param array $keyboard Массив кнопок
-     * @return $this
+     * @param \DefStudio\Telegraph\Keyboard\Keyboard|callable|array $keyboard Клавиатура
+     * @return Telegraph
      */
-    public function keyboard(array $keyboard): self
+    public function keyboard($keyboard): Telegraph
     {
-        // Пытаемся вызвать родительский метод, если он существует
-        try {
-            if (method_exists(parent::class, 'keyboard')) {
-                return parent::keyboard($keyboard);
-            }
-        } catch (\Exception $e) {
-            // Игнорируем, если метод не существует
-        }
+        // Вызываем родительский метод
+        $result = parent::keyboard($keyboard);
         
-        // Устанавливаем клавиатуру
-        if (!isset($this->data)) {
-            $this->data = [];
+        // Если передан массив, сохраняем для нашего использования
+        if (is_array($keyboard)) {
+            if (!isset($this->data)) {
+                $this->data = [];
+            }
+            $this->data['reply_markup'] = [
+                'keyboard' => $keyboard,
+                'resize_keyboard' => true,
+            ];
         }
-        $this->data['reply_markup'] = [
-            'keyboard' => $keyboard,
-            'resize_keyboard' => true,
-        ];
         
         return $this;
     }
@@ -201,20 +191,14 @@ class ExtendedTelegraph extends Telegraph
      * Установить inline клавиатуру
      * 
      * @param array $inlineKeyboard Массив inline кнопок
-     * @return $this
+     * @return Telegraph
      */
-    public function inlineKeyboard(array $inlineKeyboard): self
+    public function inlineKeyboard(array $inlineKeyboard): Telegraph
     {
-        // Пытаемся вызвать родительский метод, если он существует
-        try {
-            if (method_exists(parent::class, 'inlineKeyboard')) {
-                return parent::inlineKeyboard($inlineKeyboard);
-            }
-        } catch (\Exception $e) {
-            // Игнорируем, если метод не существует
-        }
+        // Вызываем родительский метод
+        $result = parent::inlineKeyboard($inlineKeyboard);
         
-        // Устанавливаем inline клавиатуру
+        // Сохраняем для нашего использования
         if (!isset($this->data)) {
             $this->data = [];
         }
