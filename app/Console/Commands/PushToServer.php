@@ -18,6 +18,8 @@ class PushToServer extends Command
                             {--message= : Сообщение для коммита}
                             {--skip-commit : Пропустить коммит (только push)}
                             {--skip-push : Пропустить push (только коммит)}
+                            {--skip-pull : Пропустить pull (не получать изменения с сервера)}
+                            {--force : Принудительная отправка (опасно! перезапишет изменения на сервере)}
                             {--branch=main : Ветка для push}
                             {--server=https://parser-auto.siteaccess.ru : URL сервера}
                             {--secret= : Секретный ключ для авторизации}';
@@ -111,7 +113,7 @@ class PushToServer extends Command
             // 4. Pull перед push (чтобы получить изменения с сервера)
             $pushBranch = $branch; // Инициализируем переменную
             
-            if (!$this->option('skip-push')) {
+            if (!$this->option('skip-push') && !$this->option('skip-pull')) {
                 $this->newLine();
                 $this->info("📥 Получение обновлений из Git перед отправкой...");
                 
@@ -154,10 +156,13 @@ class PushToServer extends Command
                     
                     if (!$pullProcess->isSuccessful()) {
                         $errorOutput = $pullProcess->getErrorOutput();
+                        $stdOutput = $pullProcess->getOutput();
+                        $fullOutput = $stdOutput . "\n" . $errorOutput;
                         
                         // Если rebase не удался из-за конфликтов, пробуем обычный pull
-                        if (strpos($errorOutput, 'conflict') !== false || 
-                            strpos($errorOutput, 'CONFLICT') !== false) {
+                        if (strpos($fullOutput, 'conflict') !== false || 
+                            strpos($fullOutput, 'CONFLICT') !== false ||
+                            strpos($fullOutput, 'merge conflict') !== false) {
                             $this->warn('⚠️  Обнаружены конфликты при rebase. Пробуем обычный pull...');
                             
                             // Отменяем rebase
@@ -170,33 +175,104 @@ class PushToServer extends Command
                             $pullProcess->run();
                             
                             if (!$pullProcess->isSuccessful()) {
-                                $this->error('❌ Ошибка при получении обновлений: ' . $pullProcess->getErrorOutput());
-                                $this->warn('');
-                                $this->warn('Необходимо разрешить конфликты вручную:');
-                                $this->line("   git pull origin {$pushBranch}");
-                                $this->line('   # Разрешите конфликты');
-                                $this->line("   git push origin {$pushBranch}");
-                                return Command::FAILURE;
+                                $pullError = $pullProcess->getErrorOutput();
+                                $pullOutput = $pullProcess->getOutput();
+                                
+                                // Проверяем, есть ли конфликты
+                                $conflictFiles = [];
+                                $statusCheck = new SymfonyProcess(['git', 'status', '--short']);
+                                $statusCheck->run();
+                                $statusShort = $statusCheck->getOutput();
+                                
+                                // Ищем файлы с конфликтами (UU, AA, DD)
+                                foreach (explode("\n", $statusShort) as $line) {
+                                    if (preg_match('/^[A-Z]{2}\s+(.+)$/', $line, $matches)) {
+                                        $conflictFiles[] = trim($matches[1]);
+                                    }
+                                }
+                                
+                                $this->newLine();
+                                $this->error('❌ Обнаружены конфликты при объединении изменений!');
+                                $this->newLine();
+                                
+                                if (!empty($conflictFiles)) {
+                                    $this->warn('Файлы с конфликтами:');
+                                    foreach ($conflictFiles as $file) {
+                                        $this->line("   - {$file}");
+                                    }
+                                    $this->newLine();
+                                }
+                                
+                                $this->warn('Для разрешения конфликтов выполните:');
+                                $this->line("   1. git pull origin {$pushBranch}");
+                                $this->line('   2. Откройте файлы с конфликтами и разрешите их');
+                                $this->line('   3. git add .');
+                                $this->line("   4. git commit -m 'Resolve conflicts'");
+                                $this->line("   5. php artisan push:server");
+                                $this->newLine();
+                                
+                                // Если включена опция --force, предлагаем использовать её
+                                if ($this->option('force')) {
+                                    $this->warn('⚠️  ВНИМАНИЕ: Опция --force перезапишет изменения на сервере!');
+                                    if (!$this->confirm('Продолжить с принудительной отправкой?', false)) {
+                                        return Command::FAILURE;
+                                    }
+                                    // Пропускаем pull и переходим к force push
+                                } else {
+                                    $this->info('💡 Совет: Если вы уверены, что ваши изменения важнее, используйте:');
+                                    $this->line("   php artisan push:server --force");
+                                    $this->line("   (⚠️  Это перезапишет изменения на сервере!)");
+                                    return Command::FAILURE;
+                                }
+                            } else {
+                                $this->info('✅ Изменения объединены');
                             }
                         } else {
                             $this->error('❌ Ошибка при получении обновлений: ' . $errorOutput);
                             return Command::FAILURE;
                         }
+                    } else {
+                        $this->info('✅ Изменения объединены');
                     }
-                    
-                    $this->info('✅ Изменения объединены');
                 } elseif (strpos($statusOutput, 'ahead') !== false && strpos($statusOutput, 'behind') === false) {
                     // Только ahead - можно пушить
                     $this->info('✅ Локальные изменения готовы к отправке');
                 }
+            } elseif ($this->option('skip-pull')) {
+                // Определяем текущую ветку для push
+                $currentBranchProcess = new SymfonyProcess(['git', 'branch', '--show-current']);
+                $currentBranchProcess->run();
+                $currentBranch = trim($currentBranchProcess->getOutput()) ?: $branch;
+                $pushBranch = ($currentBranch === $branch) ? $branch : $currentBranch;
+                
+                $this->warn('⚠️  Пропуск pull - изменения с сервера не получены');
+            } else {
+                // Определяем текущую ветку для push
+                $currentBranchProcess = new SymfonyProcess(['git', 'branch', '--show-current']);
+                $currentBranchProcess->run();
+                $currentBranch = trim($currentBranchProcess->getOutput()) ?: $branch;
+                $pushBranch = ($currentBranch === $branch) ? $branch : $currentBranch;
             }
 
             // 5. Push в Git
             if (!$this->option('skip-push')) {
                 $this->newLine();
+                
+                // Если используется force, предупреждаем
+                if ($this->option('force')) {
+                    $this->warn('⚠️  ВНИМАНИЕ: Используется принудительная отправка (--force)');
+                    $this->warn('   Это перезапишет изменения на сервере!');
+                    $this->newLine();
+                }
+                
                 $this->info("📤 Отправка в Git (ветка: {$pushBranch})...");
                 
-                $pushProcess = new SymfonyProcess(['git', 'push', 'origin', $pushBranch]);
+                // Используем force push если указана опция
+                $pushCommand = $this->option('force') 
+                    ? ['git', 'push', '--force', 'origin', $pushBranch]
+                    : ['git', 'push', 'origin', $pushBranch];
+                
+                $pushProcess = new SymfonyProcess($pushCommand);
                 $pushProcess->setTimeout(300); // 5 минут таймаут
                 $pushProcess->run();
                 
