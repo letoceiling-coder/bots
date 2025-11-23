@@ -264,11 +264,11 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Получить информацию о чате
+     * Получить информацию о чате через API
      * 
      * @return array
      */
-    public function getChat(): array
+    public function getChatInfo(): array
     {
         return $this->makeRequest('getChat');
     }
