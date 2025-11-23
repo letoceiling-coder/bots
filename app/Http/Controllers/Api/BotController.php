@@ -129,7 +129,7 @@ class BotController extends Controller
         try {
             $telegraph = new ExtendedTelegraph();
             $telegraph->bot = $bot;
-            $info = $telegraph->getMe();
+            $info = $telegraph->getMeApi();
             
             return response()->json([
                 'message' => 'Информация о боте получена',
@@ -365,7 +365,7 @@ class BotController extends Controller
             
             // Проверяем наличие webhook перед получением обновлений
             try {
-                $webhookInfo = $telegraph->getWebhookInfo();
+                $webhookInfo = $telegraph->getWebhookInfoApi();
                 if (isset($webhookInfo['result']['url']) && !empty($webhookInfo['result']['url'])) {
                     // Webhook установлен, это может мешать получению обновлений
                     // Но не блокируем запрос, просто предупреждаем
@@ -375,7 +375,7 @@ class BotController extends Controller
             }
             
             // Получаем последние обновления
-            $updates = $telegraph->getUpdates(null, 10);
+            $updates = $telegraph->getUpdatesApi(null, 10);
             
             // Проверяем, что ответ от API корректен
             if (!isset($updates['ok'])) {

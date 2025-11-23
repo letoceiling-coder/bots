@@ -97,7 +97,7 @@ class TelegramBotService
      */
     public function getBotInfo(Bot|int|string $bot): array
     {
-        return $this->bot($bot)->getMe();
+        return $this->bot($bot)->getMeApi();
     }
 
     /**

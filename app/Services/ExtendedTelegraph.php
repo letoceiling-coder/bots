@@ -289,12 +289,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Установить фото чата
+     * Установить фото чата через API
      * 
      * @param string $photoPath Путь к файлу фото
      * @return array
      */
-    public function setChatPhoto(string $photoPath): array
+    public function setChatPhotoApi(string $photoPath): array
     {
         $token = $this->bot?->token ?? config('telegraph.bot_token');
         $url = $this->buildApiUrl($token, 'setChatPhoto');
@@ -613,17 +613,17 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Получить информацию о боте
+     * Получить информацию о боте через API
      * 
      * @return array
      */
-    public function getMe(): array
+    public function getMeApi(): array
     {
         return $this->makeRequest('getMe');
     }
 
     /**
-     * Получить обновления
+     * Получить обновления через API
      * 
      * @param int|null $offset Смещение
      * @param int|null $limit Лимит
@@ -631,7 +631,7 @@ class ExtendedTelegraph extends Telegraph
      * @param array $allowedUpdates Разрешенные типы обновлений
      * @return array
      */
-    public function getUpdates(
+    public function getUpdatesApi(
         ?int $offset = null,
         ?int $limit = null,
         ?int $timeout = null,
@@ -659,7 +659,7 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Установить webhook
+     * Установить webhook через API
      * 
      * @param string $url URL для webhook
      * @param string|null $certificate Путь к сертификату
@@ -670,7 +670,7 @@ class ExtendedTelegraph extends Telegraph
      * @param string|null $secretToken Секретный токен
      * @return array
      */
-    public function setWebhook(
+    public function setWebhookApi(
         string $url,
         ?string $certificate = null,
         ?string $ipAddress = null,
@@ -708,12 +708,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Удалить webhook
+     * Удалить webhook через API
      * 
      * @param bool $dropPendingUpdates Удалить ожидающие обновления
      * @return array
      */
-    public function deleteWebhook(bool $dropPendingUpdates = false): array
+    public function deleteWebhookApi(bool $dropPendingUpdates = false): array
     {
         $data = [
             'drop_pending_updates' => $dropPendingUpdates,
@@ -723,11 +723,11 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Получить информацию о webhook
+     * Получить информацию о webhook через API
      * 
      * @return array
      */
-    public function getWebhookInfo(): array
+    public function getWebhookInfoApi(): array
     {
         return $this->makeRequest('getWebhookInfo');
     }
