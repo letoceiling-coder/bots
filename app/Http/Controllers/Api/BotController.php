@@ -214,6 +214,14 @@ class BotController extends Controller
             $method = $request->method;
             $methodData = $request->method_data;
             $result = null;
+            
+            Log::info('Executing block method', [
+                'bot_id' => $bot->id,
+                'bot_name' => $bot->name,
+                'method' => $method,
+                'chat_id' => $request->chat_id,
+                'method_data' => $methodData,
+            ]);
 
             switch ($method) {
                 case 'sendMessage':
@@ -321,6 +329,13 @@ class BotController extends Controller
                     ], 400);
             }
 
+            Log::info('Block method executed successfully', [
+                'bot_id' => $bot->id,
+                'method' => $method,
+                'result_ok' => $result['ok'] ?? false,
+                'result_message_id' => $result['result']['message_id'] ?? null,
+            ]);
+            
             return response()->json([
                 'message' => 'Метод успешно выполнен',
                 'data' => $result,

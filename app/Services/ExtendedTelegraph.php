@@ -96,6 +96,147 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
+     * Отправить запрос (переопределяем метод родительского класса)
+     * Использует наш makeRequest для правильной обработки данных
+     * 
+     * @return array
+     */
+    public function send(): array
+    {
+        // Пытаемся вызвать родительский метод, если он существует
+        try {
+            if (method_exists(parent::class, 'send')) {
+                $result = parent::send();
+                // Если родительский метод вернул результат, логируем и возвращаем
+                if (is_array($result)) {
+                    Log::info('Telegram message sent via parent send()', [
+                        'endpoint' => $this->endpoint ?? 'unknown',
+                        'result' => $result,
+                    ]);
+                    return $result;
+                }
+            }
+        } catch (\Exception $e) {
+            // Если родительский метод не работает, используем наш makeRequest
+            Log::warning('Parent send() failed, using makeRequest()', [
+                'error' => $e->getMessage(),
+                'endpoint' => $this->endpoint ?? 'unknown',
+            ]);
+        }
+        
+        // Используем наш makeRequest для отправки
+        $endpoint = $this->endpoint ?? 'sendMessage';
+        $data = $this->data ?? [];
+        
+        // Добавляем текст сообщения, если он установлен через message()
+        if (isset($this->message) && !isset($data['text'])) {
+            $data['text'] = $this->message;
+        }
+        
+        // Логируем отправку
+        Log::info('Sending Telegram message via makeRequest()', [
+            'endpoint' => $endpoint,
+            'data_keys' => array_keys($data),
+            'has_chat' => isset($this->chat),
+        ]);
+        
+        $result = $this->makeRequest($endpoint, $data);
+        
+        // Очищаем данные после отправки
+        $this->endpoint = null;
+        $this->data = [];
+        $this->message = null;
+        
+        return $result;
+    }
+
+    /**
+     * Установить текст сообщения
+     * 
+     * @param string $message Текст сообщения
+     * @return $this
+     */
+    public function message(string $message): self
+    {
+        // Пытаемся вызвать родительский метод, если он существует
+        try {
+            if (method_exists(parent::class, 'message')) {
+                return parent::message($message);
+            }
+        } catch (\Exception $e) {
+            // Игнорируем, если метод не существует
+        }
+        
+        // Устанавливаем текст сообщения
+        $this->message = $message;
+        $this->endpoint = 'sendMessage';
+        
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['text'] = $message;
+        
+        return $this;
+    }
+
+    /**
+     * Установить клавиатуру ответа (reply keyboard)
+     * 
+     * @param array $keyboard Массив кнопок
+     * @return $this
+     */
+    public function keyboard(array $keyboard): self
+    {
+        // Пытаемся вызвать родительский метод, если он существует
+        try {
+            if (method_exists(parent::class, 'keyboard')) {
+                return parent::keyboard($keyboard);
+            }
+        } catch (\Exception $e) {
+            // Игнорируем, если метод не существует
+        }
+        
+        // Устанавливаем клавиатуру
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['reply_markup'] = [
+            'keyboard' => $keyboard,
+            'resize_keyboard' => true,
+        ];
+        
+        return $this;
+    }
+
+    /**
+     * Установить inline клавиатуру
+     * 
+     * @param array $inlineKeyboard Массив inline кнопок
+     * @return $this
+     */
+    public function inlineKeyboard(array $inlineKeyboard): self
+    {
+        // Пытаемся вызвать родительский метод, если он существует
+        try {
+            if (method_exists(parent::class, 'inlineKeyboard')) {
+                return parent::inlineKeyboard($inlineKeyboard);
+            }
+        } catch (\Exception $e) {
+            // Игнорируем, если метод не существует
+        }
+        
+        // Устанавливаем inline клавиатуру
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['reply_markup'] = [
+            'inline_keyboard' => $inlineKeyboard,
+        ];
+        
+        return $this;
+    }
+
+    /**
      * Получить токен бота
      * 
      * @return string
