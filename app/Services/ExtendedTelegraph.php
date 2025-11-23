@@ -119,17 +119,38 @@ class ExtendedTelegraph extends Telegraph
             'endpoint' => $endpoint,
             'data_keys' => array_keys($data),
             'has_chat' => isset($this->chat),
+            'chat_value' => $this->chat ?? null,
+            'data' => $data,
         ]);
         
         // Вызываем родительский метод send()
-        $result = parent::send();
-        
-        // Логируем результат
-        Log::info('Telegram message sent', [
-            'endpoint' => $endpoint,
-            'success' => $result->successful(),
-            'message_id' => $result->telegraphMessageId() ?? null,
-        ]);
+        try {
+            $result = parent::send();
+            
+            // Логируем результат
+            $isSuccessful = $result->successful();
+            $logData = [
+                'endpoint' => $endpoint,
+                'success' => $isSuccessful,
+                'message_id' => $result->telegraphMessageId() ?? null,
+            ];
+            
+            // Если запрос не успешен, логируем ошибку
+            if (!$isSuccessful) {
+                $logData['error'] = $result->json('description') ?? $result->json('error_code') ?? 'Unknown error';
+                $logData['full_response'] = $result->json();
+                Log::error('Telegram message send failed', $logData);
+            } else {
+                Log::info('Telegram message sent', $logData);
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception while sending Telegram message', [
+                'endpoint' => $endpoint,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
         
         // Очищаем данные после отправки (не трогаем endpoint, так как родительский класс управляет им)
         $this->data = [];
