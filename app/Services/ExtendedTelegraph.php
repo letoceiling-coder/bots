@@ -43,6 +43,31 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
+     * Установить chat_id для запросов
+     * Переопределяем метод родительского класса для поддержки строки/числа
+     * 
+     * @param string|int|mixed $chatId ID чата
+     * @return $this
+     */
+    public function chat($chatId): self
+    {
+        // Вызываем родительский метод, если он существует
+        try {
+            parent::chat($chatId);
+        } catch (\Exception $e) {
+            // Если родительский метод не работает, устанавливаем напрямую
+            $this->chat = $chatId;
+        }
+        
+        // Дополнительно сохраняем chat_id для использования в makeRequest
+        if (!isset($this->chat) || (is_object($this->chat) && !($this->chat instanceof \DefStudio\Telegraph\Models\TelegraphChat))) {
+            $this->chat = $chatId;
+        }
+        
+        return $this;
+    }
+
+    /**
      * Получить токен бота
      * 
      * @return string
@@ -100,8 +125,47 @@ class ExtendedTelegraph extends Telegraph
         $token = $this->getBotToken();
 
         // Добавляем chat_id если он установлен через chat() метод
-        if (isset($this->chat) && !isset($data['chat_id'])) {
-            $data['chat_id'] = $this->chat;
+        if (!isset($data['chat_id']) && isset($this->chat)) {
+            // Если $this->chat является объектом модели, получаем chat_id из него
+            if (is_object($this->chat)) {
+                // Пытаемся получить chat_id из объекта (может быть TelegraphChat или другой объект)
+                if (method_exists($this->chat, 'getChatId')) {
+                    $data['chat_id'] = $this->chat->getChatId();
+                } elseif (property_exists($this->chat, 'chat_id')) {
+                    $data['chat_id'] = $this->chat->chat_id;
+                } elseif (method_exists($this->chat, '__toString')) {
+                    $data['chat_id'] = (string)$this->chat;
+                } else {
+                    // Если не можем извлечь, используем рефлексию
+                    try {
+                        $reflection = new \ReflectionObject($this->chat);
+                        $property = $reflection->getProperty('chat_id');
+                        $property->setAccessible(true);
+                        $data['chat_id'] = $property->getValue($this->chat);
+                    } catch (\Exception $e) {
+                        // Если не удалось, пробуем просто преобразовать в строку
+                        $data['chat_id'] = (string)$this->chat;
+                    }
+                }
+            } else {
+                // Если это строка или число, используем напрямую
+                $data['chat_id'] = $this->chat;
+            }
+        }
+        
+        // Проверяем, что chat_id установлен для методов, которые требуют его
+        $methodsRequiringChatId = [
+            'sendMessage', 'sendDice', 'sendPoll', 'sendVenue', 'sendContact',
+            'editMessageText', 'editMessageCaption', 'deleteMessage',
+            'pinChatMessage', 'unpinChatMessage', 'getChat', 'getChatMember',
+            'setChatPhoto', 'deleteChatPhoto', 'setChatTitle', 'setChatDescription',
+            'createChatInviteLink', 'revokeChatInviteLink', 'banChatMember',
+            'unbanChatMember', 'restrictChatMember', 'promoteChatMember',
+            'setChatPermissions', 'getChatAdministrators'
+        ];
+        
+        if (in_array($method, $methodsRequiringChatId) && !isset($data['chat_id'])) {
+            throw new \Exception("chat_id is required for method {$method}");
         }
 
         $url = $this->buildApiUrl($token, $method);
