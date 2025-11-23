@@ -36,3 +36,4 @@ git push -u origin main
 
 После этого команда `php artisan deploy --force` будет работать.
 
+

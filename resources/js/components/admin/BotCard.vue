@@ -100,6 +100,22 @@
                     </button>
                 </div>
 
+                <!-- Сохранение -->
+                <div class="flex items-center gap-1 border-r border-border pr-2 mr-2">
+                    <button
+                        type="button"
+                        @click="handleSaveBlocks"
+                        :disabled="isSavingBlocks"
+                        class="p-2 hover:bg-muted/50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        :class="{ 'bg-blue-500/20 text-blue-600': !isSavingBlocks }"
+                        title="Сохранить блоки"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                    </button>
+                </div>
+
                 <!-- Запуск теста -->
                 <div class="flex items-center gap-1">
                     <button
@@ -297,6 +313,7 @@ export default {
         const zoom = ref(1)
         const panOffset = ref({ x: 0, y: 0 })
         const blocks = ref([])
+        const isSavingBlocks = ref(false)
         const commands = ref([])
         const testChatId = ref('')
         const testStatus = ref(null)
@@ -405,6 +422,99 @@ export default {
 
         const zoomOut = () => {
             zoom.value = Math.max(zoom.value - 0.1, 0.5)
+        }
+
+        const handleSaveBlocks = async () => {
+            if (!props.bot?.id) {
+                await Swal.fire({
+                    title: 'Ошибка',
+                    text: 'Бот не выбран',
+                    icon: 'error',
+                    confirmButtonText: 'ОК'
+                })
+                return
+            }
+
+            isSavingBlocks.value = true
+
+            try {
+                const response = await apiPost(`/bots/${props.bot.id}/save-blocks`, {
+                    blocks: blocks.value
+                })
+
+                await Swal.fire({
+                    title: 'Успешно',
+                    text: 'Блоки успешно сохранены',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    toast: true,
+                    position: 'top-end'
+                })
+            } catch (error) {
+                await Swal.fire({
+                    title: 'Ошибка',
+                    text: error.message || 'Не удалось сохранить блоки',
+                    icon: 'error',
+                    confirmButtonText: 'ОК'
+                })
+            } finally {
+                isSavingBlocks.value = false
+            }
+        }
+
+        const loadBlocks = async () => {
+            if (!props.bot?.id) {
+                return
+            }
+
+            try {
+                const response = await apiGet(`/bots/${props.bot.id}/blocks`)
+                
+                if (!response.ok) {
+                    console.error('Ошибка загрузки блоков: HTTP', response.status)
+                    blocks.value = []
+                    return
+                }
+                
+                const data = await response.json()
+                
+                console.log('Загружены блоки из API:', data)
+                
+                // Проверяем наличие блоков в ответе
+                if (data?.data?.blocks) {
+                    if (Array.isArray(data.data.blocks) && data.data.blocks.length > 0) {
+                        console.log('Найдено блоков:', data.data.blocks.length)
+                        // Преобразуем формат полей из snake_case в camelCase для Vue
+                        blocks.value = data.data.blocks.map(block => {
+                            const convertedBlock = {
+                                ...block,
+                                // Преобразуем method_data -> methodData
+                                methodData: block.method_data || block.methodData || {},
+                            }
+                            // Удаляем method_data если есть (чтобы не было дублирования)
+                            if (convertedBlock.method_data) {
+                                delete convertedBlock.method_data
+                            }
+                            return convertedBlock
+                        })
+                        console.log('Блоки преобразованы и установлены:', blocks.value.length)
+                    } else {
+                        console.log('Блоки пустые или не массив')
+                        // Если блоки пустые или не массив, очищаем
+                        blocks.value = []
+                    }
+                } else {
+                    console.log('Блоков нет в ответе API')
+                    // Если блоков нет в ответе, очищаем
+                    blocks.value = []
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки блоков:', error)
+                // Не показываем ошибку пользователю, так как блоки могут быть не сохранены
+                // Очищаем блоки при ошибке
+                blocks.value = []
+            }
         }
 
         const fitToScreen = () => {
@@ -1341,8 +1451,16 @@ export default {
         }
 
         // Инициализация тестовых блоков при монтировании
-        onMounted(() => {
-            createDefaultTestBlocks()
+        onMounted(async () => {
+            // Загружаем сохраненные блоки из БД
+            await loadBlocks()
+            
+            // Если у бота нет карты (блоков), показываем дефолтные тестовые блоки
+            // Дефолтные блоки показываются ТОЛЬКО если карта полностью отсутствует
+            if (blocks.value.length === 0) {
+                createDefaultTestBlocks()
+            }
+            // Если блоки есть в БД - используем их, дефолтные НЕ создаем
         })
 
         return {
@@ -1371,6 +1489,8 @@ export default {
             fitToScreen,
             handleImport,
             handleExport,
+            handleSaveBlocks,
+            isSavingBlocks,
             runTest,
             closeTestModal,
             getChatId,

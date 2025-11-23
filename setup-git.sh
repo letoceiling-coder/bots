@@ -110,3 +110,4 @@ echo ""
 echo "3. После синхронизации можно использовать:"
 echo "   php artisan deploy --force"
 
+

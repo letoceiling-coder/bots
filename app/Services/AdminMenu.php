@@ -95,6 +95,12 @@ class AdminMenu
                 'icon' => 'message-circle',
                 'roles' => ['admin', 'manager'],
             ],
+            [
+                'title' => 'Прохождения ботов',
+                'route' => 'admin.bot-sessions',
+                'icon' => 'activity',
+                'roles' => ['admin', 'manager'],
+            ],
         ]);
 
         if (!$user) {

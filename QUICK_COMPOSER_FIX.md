@@ -39,3 +39,4 @@ php8.2 artisan view:cache
 COMPOSER=/home/d/dsc23ytp/.local/bin/composer php8.2 $COMPOSER install --no-dev --optimize-autoloader
 ```
 
+

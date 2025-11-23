@@ -210,3 +210,4 @@ exec > >(tee -a /var/log/deploy.log) 2>&1
 
 Или используйте Laravel логирование в Artisan команде.
 
+

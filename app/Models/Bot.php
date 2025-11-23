@@ -17,9 +17,19 @@ class Bot extends Model
         'username',
         'description',
         'is_active',
+        'blocks',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'blocks' => 'array',
     ];
+
+    /**
+     * Сессии бота
+     */
+    public function sessions()
+    {
+        return $this->hasMany(BotSession::class);
+    }
 }

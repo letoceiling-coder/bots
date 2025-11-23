@@ -415,7 +415,7 @@
                                             class="h-8 px-2 text-xs border rounded bg-background"
                                             :class="{ 'border-destructive': errors[`inline_${rowIndex}_${btnIndex}_callback`] }"
                                             placeholder="callback_data (до 64 байт)"
-                                            @input="validateInlineKeyboard"
+                                            @input="updateTargetFromCallbackData(rowIndex, btnIndex); validateInlineKeyboard()"
                                         />
                                         <input
                                             v-model="methodData.inline_keyboard[rowIndex][btnIndex].url"
@@ -424,6 +424,29 @@
                                             placeholder="URL"
                                             @input="validateInlineKeyboard"
                                         />
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-muted-foreground mb-1 block">
+                                            Целевой блок (переход по нажатию)
+                                        </label>
+                                        <select
+                                            v-model="methodData.inline_keyboard[rowIndex][btnIndex].target_block_id"
+                                            @change="updateCallbackDataFromTarget(rowIndex, btnIndex)"
+                                            class="w-full h-8 px-2 text-xs border rounded bg-background"
+                                            :class="{ 'border-destructive': !methodData.inline_keyboard[rowIndex][btnIndex].target_block_id && !methodData.inline_keyboard[rowIndex][btnIndex].url }"
+                                        >
+                                            <option :value="null">(Не выбран)</option>
+                                            <option 
+                                                v-for="block in availableBlocksForSelection" 
+                                                :key="block.id" 
+                                                :value="block.id"
+                                            >
+                                                {{ getBlockDisplayName(block) }} (ID: {{ block.id }})
+                                            </option>
+                                        </select>
+                                        <p class="text-xs text-muted-foreground mt-1">
+                                            При нажатии на кнопку произойдет переход к выбранному блоку
+                                        </p>
                                     </div>
                                     <button
                                         v-if="row.length > 1"
@@ -761,21 +784,24 @@
             </div>
 
             <!-- Выбор конкретного блока (если выбрано "specific") -->
-            <div v-if="localBlock.nextAction === 'specific'">
+            <div v-if="localBlock.nextAction === 'specific'" class="border-t border-border pt-4 mt-4">
                 <label class="text-sm font-medium mb-2 block">Выберите блок</label>
                 <select
                     v-model="localBlock.nextBlockId"
                     class="w-full h-10 px-3 border border-border rounded bg-background"
                 >
-                    <option value="">Выберите блок</option>
+                    <option :value="null">Выберите блок</option>
                     <option 
-                        v-for="block in availableBlocks" 
+                        v-for="block in availableBlocksForSelection" 
                         :key="block.id" 
                         :value="block.id"
                     >
-                        {{ block.label || `Блок #${block.id}` }}
+                        {{ getBlockDisplayName(block) }} (ID: {{ block.id }})
                     </option>
                 </select>
+                <p v-if="availableBlocksForSelection.length === 0" class="text-xs text-muted-foreground mt-2">
+                    Нет доступных блоков для выбора
+                </p>
             </div>
 
             <!-- Кнопка сохранения -->
@@ -832,6 +858,63 @@ export default {
         const availableMethodsGroups = computed(() => {
             return blockMethodsManager.getMethodsForSelect()
         })
+
+        // Получаем доступные блоки для выбора (исключая текущий блок)
+        const availableBlocksForSelection = computed(() => {
+            if (!props.selectedBlock || !props.availableBlocks) {
+                return []
+            }
+            return props.availableBlocks.filter(block => block.id !== props.selectedBlock.id)
+        })
+
+        // Следим за изменением nextAction и сбрасываем nextBlockId, если выбрано не "specific"
+        watch(() => localBlock.value.nextAction, (newValue) => {
+            if (newValue !== 'specific') {
+                localBlock.value.nextBlockId = null
+            }
+        })
+
+        // Функция для получения отображаемого названия блока
+        const getBlockDisplayName = (block) => {
+            if (block.label) {
+                return block.label
+            }
+            if (block.method) {
+                const methodLabels = {
+                    sendMessage: 'Сообщение',
+                    sendDice: '🎲 Кубик',
+                    sendPoll: '📊 Опрос',
+                    sendVenue: '📍 Локация',
+                    sendContact: '👤 Контакт',
+                    sendPhoto: '📷 Фото',
+                    sendVideo: '🎥 Видео',
+                    sendDocument: '📄 Документ',
+                    sendAudio: '🎵 Аудио',
+                    sendVoice: '🎤 Голосовое',
+                    sendVideoNote: '🎬 Видео-кружок',
+                    sendAnimation: '🎞️ Анимация',
+                    sendSticker: '😊 Стикер',
+                    sendLocation: '📍 Локация',
+                    sendMediaGroup: '🖼️ Группа медиа',
+                    sendChatAction: '⏳ Действие',
+                    editMessageText: 'Редактировать текст',
+                    editMessageCaption: 'Редактировать подпись',
+                    deleteMessage: 'Удалить',
+                    pinChatMessage: 'Закрепить',
+                    unpinChatMessage: 'Открепить',
+                    replyKeyboard: 'Reply-кнопки',
+                    inlineKeyboard: 'Inline кнопки',
+                    question: 'Задать вопрос',
+                    managerChat: '💬 Менеджер',
+                    apiRequest: '🌐 API',
+                    apiButtons: '🔘 API Кнопки',
+                    apiMediaGroup: '🖼️ API Медиа',
+                    assistant: '🤖 AI'
+                }
+                return methodLabels[block.method] || block.method
+            }
+            return `Блок #${block.id}`
+        }
 
         // Инициализация данных метода по умолчанию
         const initMethodData = (method) => {
@@ -928,7 +1011,7 @@ export default {
                     one_time_keyboard: false
                 },
                 inlineKeyboard: {
-                    inline_keyboard: [[{ text: '', callback_data: '', url: '' }]]
+                    inline_keyboard: [[{ text: '', callback_data: '', url: '', target_block_id: null }]]
                 },
                 editMessageText: {
                     text: '',
@@ -984,6 +1067,27 @@ export default {
                 // Загружаем данные метода из блока или инициализируем по умолчанию
                 if (newBlock.method && newBlock.methodData) {
                     methodData.value = { ...newBlock.methodData }
+                    
+                    // Обратная совместимость: добавляем target_block_id для кнопок inline-клавиатуры
+                    if (newBlock.method === 'inlineKeyboard' && methodData.value.inline_keyboard) {
+                        methodData.value.inline_keyboard.forEach((row) => {
+                            row.forEach((button) => {
+                                // Добавляем target_block_id, если его нет
+                                if (!('target_block_id' in button)) {
+                                    button.target_block_id = null
+                                }
+                                // Автозаполнение, если callback_data = ID блока
+                                if (button.callback_data && !button.target_block_id) {
+                                    const blockExists = availableBlocksForSelection.value.some(
+                                        b => String(b.id) === String(button.callback_data)
+                                    )
+                                    if (blockExists) {
+                                        button.target_block_id = button.callback_data
+                                    }
+                                }
+                            })
+                        })
+                    }
                 } else if (newBlock.method) {
                     methodData.value = initMethodData(newBlock.method)
                 } else {
@@ -1072,7 +1176,7 @@ export default {
         // Управление inline клавиатурой
         const addInlineKeyboardRow = () => {
             if (methodData.value.inline_keyboard.length < 8) {
-                methodData.value.inline_keyboard.push([{ text: '', callback_data: '', url: '' }])
+                methodData.value.inline_keyboard.push([{ text: '', callback_data: '', url: '', target_block_id: null }])
             }
         }
 
@@ -1085,7 +1189,7 @@ export default {
 
         const addInlineKeyboardButton = (rowIndex) => {
             if (methodData.value.inline_keyboard[rowIndex].length < 13) {
-                methodData.value.inline_keyboard[rowIndex].push({ text: '', callback_data: '', url: '' })
+                methodData.value.inline_keyboard[rowIndex].push({ text: '', callback_data: '', url: '', target_block_id: null })
             }
         }
 
@@ -1094,6 +1198,32 @@ export default {
                 methodData.value.inline_keyboard[rowIndex].splice(btnIndex, 1)
                 validateInlineKeyboard()
             }
+        }
+
+        // Автозаполнение callback_data из target_block_id
+        const updateCallbackDataFromTarget = (rowIndex, btnIndex) => {
+            const button = methodData.value.inline_keyboard[rowIndex][btnIndex]
+            // Если target_block_id указан, но callback_data пуст
+            if (button.target_block_id && !button.callback_data) {
+                button.callback_data = String(button.target_block_id)
+            }
+            validateInlineKeyboard()
+        }
+
+        // Автозаполнение target_block_id из callback_data (если callback_data = ID блока)
+        const updateTargetFromCallbackData = (rowIndex, btnIndex) => {
+            const button = methodData.value.inline_keyboard[rowIndex][btnIndex]
+            // Если callback_data является числом (ID блока) и target_block_id не указан
+            if (button.callback_data && /^\d+$/.test(String(button.callback_data))) {
+                // Проверяем, существует ли блок с таким ID
+                const blockExists = availableBlocksForSelection.value.some(
+                    b => String(b.id) === String(button.callback_data)
+                )
+                if (blockExists && !button.target_block_id) {
+                    button.target_block_id = button.callback_data
+                }
+            }
+            validateInlineKeyboard()
         }
 
         const isValid = computed(() => {
@@ -1165,6 +1295,8 @@ export default {
             errors,
             isValid,
             availableMethodsGroups,
+            availableBlocksForSelection,
+            getBlockDisplayName,
             validateField,
             validatePollOptions,
             validateKeyboard,
@@ -1179,6 +1311,8 @@ export default {
             removeInlineKeyboardRow,
             addInlineKeyboardButton,
             removeInlineKeyboardButton,
+            updateCallbackDataFromTarget,
+            updateTargetFromCallbackData,
             handleMethodChange,
             handleSave,
             getMediaFileValue

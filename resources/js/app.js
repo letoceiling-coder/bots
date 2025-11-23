@@ -253,6 +253,11 @@ const routes = [
                 name: 'admin.bots',
                 component: () => import('./pages/admin/Bots.vue'),
             },
+            {
+                path: 'bot-sessions',
+                name: 'admin.bot-sessions',
+                component: () => import('./pages/admin/BotSessions.vue'),
+            },
         ],
     },
 ];

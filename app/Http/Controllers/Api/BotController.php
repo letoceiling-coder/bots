@@ -51,6 +51,7 @@ class BotController extends Controller
             'username' => $request->username,
             'description' => $request->description,
             'is_active' => $request->has('is_active') ? $request->is_active : true,
+            'blocks' => $request->blocks ?? null,
         ]);
 
         return response()->json([
@@ -84,6 +85,7 @@ class BotController extends Controller
             'username' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'is_active' => 'nullable|boolean',
+            'blocks' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
@@ -99,6 +101,7 @@ class BotController extends Controller
             'username' => $request->username,
             'description' => $request->description,
             'is_active' => $request->has('is_active') ? $request->is_active : $bot->is_active,
+            'blocks' => $request->has('blocks') ? $request->blocks : $bot->blocks,
         ]);
 
         return response()->json([
@@ -998,5 +1001,47 @@ class BotController extends Controller
                 'recommendations' => $recommendations,
             ], 500);
         }
+    }
+
+    /**
+     * Сохранить блоки диаграммы бота
+     */
+    public function saveBlocks(Request $request, string $id)
+    {
+        $bot = Bot::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'blocks' => 'required|array',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Ошибка валидации',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $bot->update([
+            'blocks' => $request->blocks,
+        ]);
+
+        return response()->json([
+            'message' => 'Блоки успешно сохранены',
+            'data' => $bot->fresh(),
+        ]);
+    }
+
+    /**
+     * Получить блоки диаграммы бота
+     */
+    public function getBlocks(string $id)
+    {
+        $bot = Bot::findOrFail($id);
+        
+        return response()->json([
+            'data' => [
+                'blocks' => $bot->blocks ?? [],
+            ],
+        ]);
     }
 }

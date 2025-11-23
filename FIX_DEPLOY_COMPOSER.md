@@ -52,3 +52,4 @@ php8.2 artisan deploy --force
 
 Команда `php8.2 artisan deploy --force` будет работать корректно!
 
+
