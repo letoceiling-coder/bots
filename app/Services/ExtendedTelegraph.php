@@ -1,0 +1,696 @@
+<?php
+
+namespace App\Services;
+
+use DefStudio\Telegraph\Telegraph;
+use Illuminate\Support\Facades\Http;
+use App\Models\Bot;
+
+/**
+ * Расширенный класс для работы с Telegram Bot API
+ * Добавляет методы, отсутствующие в базовом пакете Telegraph
+ * 
+ * @see https://core.telegram.org/bots/api
+ */
+class ExtendedTelegraph extends Telegraph
+{
+    protected string $baseUrl = 'https://api.telegram.org/bot';
+
+    /**
+     * Получить URL для API запросов
+     */
+    protected function getApiUrl(string $token, string $method): string
+    {
+        return "{$this->baseUrl}{$token}/{$method}";
+    }
+
+    /**
+     * Выполнить запрос к Telegram API
+     */
+    protected function makeRequest(string $method, array $data = []): array
+    {
+        $token = $this->bot?->token ?? config('telegraph.bot_token');
+        
+        if (!$token) {
+            throw new \Exception('Telegram bot token is not set');
+        }
+
+        // Добавляем chat_id если он установлен через chat() метод
+        if (isset($this->chat) && !isset($data['chat_id'])) {
+            $data['chat_id'] = $this->chat;
+        }
+
+        $url = $this->getApiUrl($token, $method);
+        
+        $response = Http::post($url, $data);
+        
+        if (!$response->successful()) {
+            throw new \Exception("Telegram API error: " . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Отправить кубик (dice)
+     * 
+     * @param string|null $emoji Эмодзи кубика (🎲, 🎯, 🏀, ⚽, 🎳, 🎰)
+     * @param int|null $replyToMessageId ID сообщения для ответа
+     * @return $this
+     */
+    public function sendDice(?string $emoji = null, ?int $replyToMessageId = null): self
+    {
+        $data = [];
+        
+        if ($emoji) {
+            $data['emoji'] = $emoji;
+        }
+        
+        if ($replyToMessageId) {
+            $data['reply_to_message_id'] = $replyToMessageId;
+        }
+
+        $this->endpoint = 'sendDice';
+        $this->data = array_merge($this->data ?? [], $data);
+
+        return $this;
+    }
+
+    /**
+     * Отправить опрос (poll)
+     * 
+     * @param string $question Вопрос
+     * @param array $options Варианты ответов
+     * @param bool $isAnonymous Анонимный опрос
+     * @param string|null $type Тип опроса (quiz или regular)
+     * @return $this
+     */
+    public function sendPoll(string $question, array $options, bool $isAnonymous = true, ?string $type = null): self
+    {
+        $data = [
+            'question' => $question,
+            'options' => $options,
+            'is_anonymous' => $isAnonymous,
+        ];
+
+        if ($type) {
+            $data['type'] = $type;
+        }
+
+        $this->endpoint = 'sendPoll';
+        $this->data = array_merge($this->data ?? [], $data);
+
+        return $this;
+    }
+
+    /**
+     * Отправить локацию (venue)
+     * 
+     * @param float $latitude Широта
+     * @param float $longitude Долгота
+     * @param string $title Название места
+     * @param string $address Адрес
+     * @param string|null $foursquareId ID Foursquare
+     * @return $this
+     */
+    public function sendVenue(float $latitude, float $longitude, string $title, string $address, ?string $foursquareId = null): self
+    {
+        $data = [
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'title' => $title,
+            'address' => $address,
+        ];
+
+        if ($foursquareId) {
+            $data['foursquare_id'] = $foursquareId;
+        }
+
+        $this->endpoint = 'sendVenue';
+        $this->data = array_merge($this->data ?? [], $data);
+
+        return $this;
+    }
+
+    /**
+     * Отправить контакт
+     * 
+     * @param string $phoneNumber Номер телефона
+     * @param string $firstName Имя
+     * @param string|null $lastName Фамилия
+     * @param string|null $vcard vCard данные
+     * @return $this
+     */
+    public function sendContact(string $phoneNumber, string $firstName, ?string $lastName = null, ?string $vcard = null): self
+    {
+        $data = [
+            'phone_number' => $phoneNumber,
+            'first_name' => $firstName,
+        ];
+
+        if ($lastName) {
+            $data['last_name'] = $lastName;
+        }
+
+        if ($vcard) {
+            $data['vcard'] = $vcard;
+        }
+
+        $this->endpoint = 'sendContact';
+        $this->data = array_merge($this->data ?? [], $data);
+
+        return $this;
+    }
+
+    /**
+     * Редактировать текст сообщения
+     * 
+     * @param int $messageId ID сообщения
+     * @param string $text Новый текст
+     * @param array|null $replyMarkup Клавиатура
+     * @return array
+     */
+    public function editMessageText(int $messageId, string $text, ?array $replyMarkup = null): array
+    {
+        $data = [
+            'message_id' => $messageId,
+            'text' => $text,
+        ];
+
+        if ($replyMarkup) {
+            $data['reply_markup'] = $replyMarkup;
+        }
+
+        return $this->makeRequest('editMessageText', $data);
+    }
+
+    /**
+     * Редактировать подпись к медиа
+     * 
+     * @param int $messageId ID сообщения
+     * @param string|null $caption Новая подпись
+     * @param array|null $replyMarkup Клавиатура
+     * @return array
+     */
+    public function editMessageCaption(int $messageId, ?string $caption = null, ?array $replyMarkup = null): array
+    {
+        $data = [
+            'message_id' => $messageId,
+        ];
+
+        if ($caption !== null) {
+            $data['caption'] = $caption;
+        }
+
+        if ($replyMarkup) {
+            $data['reply_markup'] = $replyMarkup;
+        }
+
+        return $this->makeRequest('editMessageCaption', $data);
+    }
+
+    /**
+     * Удалить сообщение
+     * 
+     * @param int $messageId ID сообщения
+     * @return array
+     */
+    public function deleteMessage(int $messageId): array
+    {
+        $data = [
+            'message_id' => $messageId,
+        ];
+
+        return $this->makeRequest('deleteMessage', $data);
+    }
+
+    /**
+     * Получить информацию о чате
+     * 
+     * @return array
+     */
+    public function getChat(): array
+    {
+        return $this->makeRequest('getChat');
+    }
+
+    /**
+     * Получить информацию об участнике чата
+     * 
+     * @param int $userId ID пользователя
+     * @return array
+     */
+    public function getChatMember(int $userId): array
+    {
+        $data = [
+            'user_id' => $userId,
+        ];
+
+        return $this->makeRequest('getChatMember', $data);
+    }
+
+    /**
+     * Установить фото чата
+     * 
+     * @param string $photoPath Путь к файлу фото
+     * @return array
+     */
+    public function setChatPhoto(string $photoPath): array
+    {
+        $token = $this->bot?->token ?? config('telegraph.bot_token');
+        $url = $this->getApiUrl($token, 'setChatPhoto');
+        
+        $response = Http::attach('photo', file_get_contents($photoPath), basename($photoPath))
+            ->post($url);
+        
+        if (!$response->successful()) {
+            throw new \Exception("Telegram API error: " . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Удалить фото чата
+     * 
+     * @return array
+     */
+    public function deleteChatPhoto(): array
+    {
+        return $this->makeRequest('deleteChatPhoto');
+    }
+
+    /**
+     * Установить название чата
+     * 
+     * @param string $title Новое название
+     * @return array
+     */
+    public function setChatTitle(string $title): array
+    {
+        $data = [
+            'title' => $title,
+        ];
+
+        return $this->makeRequest('setChatTitle', $data);
+    }
+
+    /**
+     * Установить описание чата
+     * 
+     * @param string $description Новое описание
+     * @return array
+     */
+    public function setChatDescription(string $description): array
+    {
+        $data = [
+            'description' => $description,
+        ];
+
+        return $this->makeRequest('setChatDescription', $data);
+    }
+
+    /**
+     * Закрепить сообщение
+     * 
+     * @param int $messageId ID сообщения
+     * @param bool $disableNotification Отключить уведомление
+     * @return array
+     */
+    public function pinChatMessage(int $messageId, bool $disableNotification = false): array
+    {
+        $data = [
+            'message_id' => $messageId,
+            'disable_notification' => $disableNotification,
+        ];
+
+        return $this->makeRequest('pinChatMessage', $data);
+    }
+
+    /**
+     * Открепить сообщение
+     * 
+     * @param int|null $messageId ID сообщения (если null, открепляет все)
+     * @return array
+     */
+    public function unpinChatMessage(?int $messageId = null): array
+    {
+        $data = [];
+        
+        if ($messageId !== null) {
+            $data['message_id'] = $messageId;
+        }
+
+        return $this->makeRequest('unpinChatMessage', $data);
+    }
+
+    /**
+     * Получить список администраторов чата
+     * 
+     * @return array
+     */
+    public function getChatAdministrators(): array
+    {
+        return $this->makeRequest('getChatAdministrators');
+    }
+
+    /**
+     * Создать пригласительную ссылку
+     * 
+     * @param string|null $name Название ссылки
+     * @param \DateTime|null $expireDate Дата истечения
+     * @param int|null $memberLimit Лимит участников
+     * @param bool $createsJoinRequest Создавать запрос на присоединение
+     * @return array
+     */
+    public function createChatInviteLink(
+        ?string $name = null,
+        ?\DateTime $expireDate = null,
+        ?int $memberLimit = null,
+        bool $createsJoinRequest = false
+    ): array {
+        $data = [
+            'creates_join_request' => $createsJoinRequest,
+        ];
+
+        if ($name) {
+            $data['name'] = $name;
+        }
+
+        if ($expireDate) {
+            $data['expire_date'] = $expireDate->getTimestamp();
+        }
+
+        if ($memberLimit !== null) {
+            $data['member_limit'] = $memberLimit;
+        }
+
+        return $this->makeRequest('createChatInviteLink', $data);
+    }
+
+    /**
+     * Отозвать пригласительную ссылку
+     * 
+     * @param string $inviteLink Пригласительная ссылка
+     * @return array
+     */
+    public function revokeChatInviteLink(string $inviteLink): array
+    {
+        $data = [
+            'invite_link' => $inviteLink,
+        ];
+
+        return $this->makeRequest('revokeChatInviteLink', $data);
+    }
+
+    /**
+     * Забанить участника чата
+     * 
+     * @param int $userId ID пользователя
+     * @param \DateTime|null $untilDate До какой даты
+     * @param bool $revokeMessages Удалить сообщения
+     * @return array
+     */
+    public function banChatMember(int $userId, ?\DateTime $untilDate = null, bool $revokeMessages = false): array
+    {
+        $data = [
+            'user_id' => $userId,
+            'revoke_messages' => $revokeMessages,
+        ];
+
+        if ($untilDate) {
+            $data['until_date'] = $untilDate->getTimestamp();
+        }
+
+        return $this->makeRequest('banChatMember', $data);
+    }
+
+    /**
+     * Разбанить участника чата
+     * 
+     * @param int $userId ID пользователя
+     * @param bool $onlyIfBanned Разбанить только если забанен
+     * @return array
+     */
+    public function unbanChatMember(int $userId, bool $onlyIfBanned = false): array
+    {
+        $data = [
+            'user_id' => $userId,
+            'only_if_banned' => $onlyIfBanned,
+        ];
+
+        return $this->makeRequest('unbanChatMember', $data);
+    }
+
+    /**
+     * Ограничить участника чата
+     * 
+     * @param int $userId ID пользователя
+     * @param array $permissions Права доступа
+     * @param \DateTime|null $untilDate До какой даты
+     * @return array
+     */
+    public function restrictChatMember(int $userId, array $permissions, ?\DateTime $untilDate = null): array
+    {
+        $data = [
+            'user_id' => $userId,
+            'permissions' => $permissions,
+        ];
+
+        if ($untilDate) {
+            $data['until_date'] = $untilDate->getTimestamp();
+        }
+
+        return $this->makeRequest('restrictChatMember', $data);
+    }
+
+    /**
+     * Повысить участника до администратора
+     * 
+     * @param int $userId ID пользователя
+     * @param bool $isAnonymous Анонимный администратор
+     * @param bool $canManageChat Может управлять чатом
+     * @param bool $canPostMessages Может публиковать сообщения
+     * @param bool $canEditMessages Может редактировать сообщения
+     * @param bool $canDeleteMessages Может удалять сообщения
+     * @param bool $canManageVideoChats Может управлять видеозвонками
+     * @param bool $canRestrictMembers Может ограничивать участников
+     * @param bool $canPromoteMembers Может повышать участников
+     * @param bool $canChangeInfo Может изменять информацию
+     * @param bool $canInviteUsers Может приглашать пользователей
+     * @param bool $canPinMessages Может закреплять сообщения
+     * @return array
+     */
+    public function promoteChatMember(
+        int $userId,
+        bool $isAnonymous = false,
+        bool $canManageChat = false,
+        bool $canPostMessages = false,
+        bool $canEditMessages = false,
+        bool $canDeleteMessages = false,
+        bool $canManageVideoChats = false,
+        bool $canRestrictMembers = false,
+        bool $canPromoteMembers = false,
+        bool $canChangeInfo = false,
+        bool $canInviteUsers = false,
+        bool $canPinMessages = false
+    ): array {
+        $data = [
+            'user_id' => $userId,
+            'is_anonymous' => $isAnonymous,
+            'can_manage_chat' => $canManageChat,
+            'can_post_messages' => $canPostMessages,
+            'can_edit_messages' => $canEditMessages,
+            'can_delete_messages' => $canDeleteMessages,
+            'can_manage_video_chats' => $canManageVideoChats,
+            'can_restrict_members' => $canRestrictMembers,
+            'can_promote_members' => $canPromoteMembers,
+            'can_change_info' => $canChangeInfo,
+            'can_invite_users' => $canInviteUsers,
+            'can_pin_messages' => $canPinMessages,
+        ];
+
+        return $this->makeRequest('promoteChatMember', $data);
+    }
+
+    /**
+     * Установить права доступа для участников
+     * 
+     * @param array $permissions Права доступа
+     * @return array
+     */
+    public function setChatPermissions(array $permissions): array
+    {
+        $data = [
+            'permissions' => $permissions,
+        ];
+
+        return $this->makeRequest('setChatPermissions', $data);
+    }
+
+    /**
+     * Получить информацию о файле
+     * 
+     * @param string $fileId ID файла
+     * @return array
+     */
+    public function getFile(string $fileId): array
+    {
+        $data = [
+            'file_id' => $fileId,
+        ];
+
+        return $this->makeRequest('getFile', $data);
+    }
+
+    /**
+     * Скачать файл
+     * 
+     * @param string $fileId ID файла
+     * @param string $savePath Путь для сохранения
+     * @return string|false Путь к сохраненному файлу или false при ошибке
+     */
+    public function downloadFile(string $fileId, string $savePath): string|false
+    {
+        $fileInfo = $this->getFile($fileId);
+        
+        if (!isset($fileInfo['result']['file_path'])) {
+            return false;
+        }
+
+        $filePath = $fileInfo['result']['file_path'];
+        $token = $this->bot?->token ?? config('telegraph.bot_token');
+        $fileUrl = "https://api.telegram.org/file/bot{$token}/{$filePath}";
+        
+        $fileContent = Http::get($fileUrl)->body();
+        
+        if (!file_exists(dirname($savePath))) {
+            mkdir(dirname($savePath), 0755, true);
+        }
+        
+        file_put_contents($savePath, $fileContent);
+        
+        return $savePath;
+    }
+
+    /**
+     * Получить информацию о боте
+     * 
+     * @return array
+     */
+    public function getMe(): array
+    {
+        return $this->makeRequest('getMe');
+    }
+
+    /**
+     * Получить обновления
+     * 
+     * @param int|null $offset Смещение
+     * @param int|null $limit Лимит
+     * @param int|null $timeout Таймаут
+     * @param array $allowedUpdates Разрешенные типы обновлений
+     * @return array
+     */
+    public function getUpdates(
+        ?int $offset = null,
+        ?int $limit = null,
+        ?int $timeout = null,
+        array $allowedUpdates = []
+    ): array {
+        $data = [];
+
+        if ($offset !== null) {
+            $data['offset'] = $offset;
+        }
+
+        if ($limit !== null) {
+            $data['limit'] = $limit;
+        }
+
+        if ($timeout !== null) {
+            $data['timeout'] = $timeout;
+        }
+
+        if (!empty($allowedUpdates)) {
+            $data['allowed_updates'] = $allowedUpdates;
+        }
+
+        return $this->makeRequest('getUpdates', $data);
+    }
+
+    /**
+     * Установить webhook
+     * 
+     * @param string $url URL для webhook
+     * @param string|null $certificate Путь к сертификату
+     * @param string|null $ipAddress IP адрес
+     * @param int|null $maxConnections Максимальное количество соединений
+     * @param array $allowedUpdates Разрешенные типы обновлений
+     * @param bool $dropPendingUpdates Удалить ожидающие обновления
+     * @param string|null $secretToken Секретный токен
+     * @return array
+     */
+    public function setWebhook(
+        string $url,
+        ?string $certificate = null,
+        ?string $ipAddress = null,
+        ?int $maxConnections = null,
+        array $allowedUpdates = [],
+        bool $dropPendingUpdates = false,
+        ?string $secretToken = null
+    ): array {
+        $data = [
+            'url' => $url,
+            'drop_pending_updates' => $dropPendingUpdates,
+        ];
+
+        if ($certificate) {
+            $data['certificate'] = $certificate;
+        }
+
+        if ($ipAddress) {
+            $data['ip_address'] = $ipAddress;
+        }
+
+        if ($maxConnections !== null) {
+            $data['max_connections'] = $maxConnections;
+        }
+
+        if (!empty($allowedUpdates)) {
+            $data['allowed_updates'] = $allowedUpdates;
+        }
+
+        if ($secretToken) {
+            $data['secret_token'] = $secretToken;
+        }
+
+        return $this->makeRequest('setWebhook', $data);
+    }
+
+    /**
+     * Удалить webhook
+     * 
+     * @param bool $dropPendingUpdates Удалить ожидающие обновления
+     * @return array
+     */
+    public function deleteWebhook(bool $dropPendingUpdates = false): array
+    {
+        $data = [
+            'drop_pending_updates' => $dropPendingUpdates,
+        ];
+
+        return $this->makeRequest('deleteWebhook', $data);
+    }
+
+    /**
+     * Получить информацию о webhook
+     * 
+     * @return array
+     */
+    public function getWebhookInfo(): array
+    {
+        return $this->makeRequest('getWebhookInfo');
+    }
+}
+
