@@ -20,7 +20,7 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Получить URL для API запросов
      */
-    protected function getApiUrl(string $token, string $method): string
+    public function getApiUrl(string $token, string $method): string
     {
         return "{$this->baseUrl}{$token}/{$method}";
     }
