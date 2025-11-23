@@ -113,7 +113,7 @@ class TelegramBotService
         $telegraph = $this->bot($bot);
         $telegraph->chat($chatId);
         
-        return $telegraph->deleteMessage($messageId);
+        return $telegraph->deleteMessageApi($messageId);
     }
 }
 

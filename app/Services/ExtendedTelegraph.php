@@ -202,14 +202,14 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Редактировать текст сообщения
+     * Редактировать текст сообщения через API
      * 
      * @param int $messageId ID сообщения
      * @param string $text Новый текст
      * @param array|null $replyMarkup Клавиатура
      * @return array
      */
-    public function editMessageText(int $messageId, string $text, ?array $replyMarkup = null): array
+    public function editMessageTextApi(int $messageId, string $text, ?array $replyMarkup = null): array
     {
         $data = [
             'message_id' => $messageId,
@@ -224,14 +224,14 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Редактировать подпись к медиа
+     * Редактировать подпись к медиа через API
      * 
      * @param int $messageId ID сообщения
      * @param string|null $caption Новая подпись
      * @param array|null $replyMarkup Клавиатура
      * @return array
      */
-    public function editMessageCaption(int $messageId, ?string $caption = null, ?array $replyMarkup = null): array
+    public function editMessageCaptionApi(int $messageId, ?string $caption = null, ?array $replyMarkup = null): array
     {
         $data = [
             'message_id' => $messageId,
@@ -249,12 +249,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Удалить сообщение
+     * Удалить сообщение через API
      * 
      * @param int $messageId ID сообщения
      * @return array
      */
-    public function deleteMessage(int $messageId): array
+    public function deleteMessageApi(int $messageId): array
     {
         $data = [
             'message_id' => $messageId,
@@ -274,12 +274,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Получить информацию об участнике чата
+     * Получить информацию об участнике чата через API
      * 
      * @param int $userId ID пользователя
      * @return array
      */
-    public function getChatMember(int $userId): array
+    public function getChatMemberApi(int $userId): array
     {
         $data = [
             'user_id' => $userId,
@@ -384,17 +384,17 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Получить список администраторов чата
+     * Получить список администраторов чата через API
      * 
      * @return array
      */
-    public function getChatAdministrators(): array
+    public function getChatAdministratorsApi(): array
     {
         return $this->makeRequest('getChatAdministrators');
     }
 
     /**
-     * Создать пригласительную ссылку
+     * Создать пригласительную ссылку через API
      * 
      * @param string|null $name Название ссылки
      * @param \DateTime|null $expireDate Дата истечения
@@ -402,7 +402,7 @@ class ExtendedTelegraph extends Telegraph
      * @param bool $createsJoinRequest Создавать запрос на присоединение
      * @return array
      */
-    public function createChatInviteLink(
+    public function createChatInviteLinkApi(
         ?string $name = null,
         ?\DateTime $expireDate = null,
         ?int $memberLimit = null,
@@ -428,12 +428,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Отозвать пригласительную ссылку
+     * Отозвать пригласительную ссылку через API
      * 
      * @param string $inviteLink Пригласительная ссылка
      * @return array
      */
-    public function revokeChatInviteLink(string $inviteLink): array
+    public function revokeChatInviteLinkApi(string $inviteLink): array
     {
         $data = [
             'invite_link' => $inviteLink,
@@ -443,14 +443,14 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Забанить участника чата
+     * Забанить участника чата через API
      * 
      * @param int $userId ID пользователя
      * @param \DateTime|null $untilDate До какой даты
      * @param bool $revokeMessages Удалить сообщения
      * @return array
      */
-    public function banChatMember(int $userId, ?\DateTime $untilDate = null, bool $revokeMessages = false): array
+    public function banChatMemberApi(int $userId, ?\DateTime $untilDate = null, bool $revokeMessages = false): array
     {
         $data = [
             'user_id' => $userId,
@@ -465,13 +465,13 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Разбанить участника чата
+     * Разбанить участника чата через API
      * 
      * @param int $userId ID пользователя
      * @param bool $onlyIfBanned Разбанить только если забанен
      * @return array
      */
-    public function unbanChatMember(int $userId, bool $onlyIfBanned = false): array
+    public function unbanChatMemberApi(int $userId, bool $onlyIfBanned = false): array
     {
         $data = [
             'user_id' => $userId,
@@ -482,14 +482,14 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Ограничить участника чата
+     * Ограничить участника чата через API
      * 
      * @param int $userId ID пользователя
      * @param array $permissions Права доступа
      * @param \DateTime|null $untilDate До какой даты
      * @return array
      */
-    public function restrictChatMember(int $userId, array $permissions, ?\DateTime $untilDate = null): array
+    public function restrictChatMemberApi(int $userId, array $permissions, ?\DateTime $untilDate = null): array
     {
         $data = [
             'user_id' => $userId,
@@ -504,7 +504,7 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Повысить участника до администратора
+     * Повысить участника до администратора через API
      * 
      * @param int $userId ID пользователя
      * @param bool $isAnonymous Анонимный администратор
@@ -520,7 +520,7 @@ class ExtendedTelegraph extends Telegraph
      * @param bool $canPinMessages Может закреплять сообщения
      * @return array
      */
-    public function promoteChatMember(
+    public function promoteChatMemberApi(
         int $userId,
         bool $isAnonymous = false,
         bool $canManageChat = false,
@@ -553,12 +553,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Установить права доступа для участников
+     * Установить права доступа для участников через API
      * 
      * @param array $permissions Права доступа
      * @return array
      */
-    public function setChatPermissions(array $permissions): array
+    public function setChatPermissionsApi(array $permissions): array
     {
         $data = [
             'permissions' => $permissions,
@@ -568,12 +568,12 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
-     * Получить информацию о файле
+     * Получить информацию о файле через API
      * 
      * @param string $fileId ID файла
      * @return array
      */
-    public function getFile(string $fileId): array
+    public function getFileApi(string $fileId): array
     {
         $data = [
             'file_id' => $fileId,
@@ -591,7 +591,7 @@ class ExtendedTelegraph extends Telegraph
      */
     public function downloadFile(string $fileId, string $savePath): string|false
     {
-        $fileInfo = $this->getFile($fileId);
+        $fileInfo = $this->getFileApi($fileId);
         
         if (!isset($fileInfo['result']['file_path'])) {
             return false;

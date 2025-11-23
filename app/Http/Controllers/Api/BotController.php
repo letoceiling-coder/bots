@@ -288,21 +288,23 @@ class BotController extends Controller
                     break;
 
                 case 'editMessageText':
-                    $result = $telegraph->editMessageText(
+                    $result = $telegraph->editMessageTextApi(
                         $methodData['message_id'] ?? null,
-                        $methodData['text'] ?? ''
-                    )->send();
+                        $methodData['text'] ?? '',
+                        $methodData['reply_markup'] ?? null
+                    );
                     break;
 
                 case 'editMessageCaption':
-                    $result = $telegraph->editMessageCaption(
+                    $result = $telegraph->editMessageCaptionApi(
                         $methodData['message_id'] ?? null,
-                        $methodData['caption'] ?? ''
-                    )->send();
+                        $methodData['caption'] ?? null,
+                        $methodData['reply_markup'] ?? null
+                    );
                     break;
 
                 case 'deleteMessage':
-                    $result = $telegraph->deleteMessage($methodData['message_id'] ?? null)->send();
+                    $result = $telegraph->deleteMessageApi($methodData['message_id'] ?? null);
                     break;
 
                 case 'pinChatMessage':
