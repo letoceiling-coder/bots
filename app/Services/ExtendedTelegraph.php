@@ -19,8 +19,12 @@ class ExtendedTelegraph extends Telegraph
 
     /**
      * Получить URL для API запросов
+     * 
+     * @param string $token Токен бота
+     * @param string $method Метод API
+     * @return string
      */
-    public function getApiUrl(string $token, string $method): string
+    protected function buildApiUrl(string $token, string $method): string
     {
         return "{$this->baseUrl}{$token}/{$method}";
     }
@@ -41,7 +45,7 @@ class ExtendedTelegraph extends Telegraph
             $data['chat_id'] = $this->chat;
         }
 
-        $url = $this->getApiUrl($token, $method);
+        $url = $this->buildApiUrl($token, $method);
         
         $response = Http::post($url, $data);
         
@@ -293,7 +297,7 @@ class ExtendedTelegraph extends Telegraph
     public function setChatPhoto(string $photoPath): array
     {
         $token = $this->bot?->token ?? config('telegraph.bot_token');
-        $url = $this->getApiUrl($token, 'setChatPhoto');
+        $url = $this->buildApiUrl($token, 'setChatPhoto');
         
         $response = Http::attach('photo', file_get_contents($photoPath), basename($photoPath))
             ->post($url);
