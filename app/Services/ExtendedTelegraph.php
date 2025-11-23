@@ -131,8 +131,7 @@ class ExtendedTelegraph extends Telegraph
             'message_id' => $result->telegraphMessageId() ?? null,
         ]);
         
-        // Очищаем данные после отправки
-        $this->endpoint = null;
+        // Очищаем данные после отправки (не трогаем endpoint, так как родительский класс управляет им)
         $this->data = [];
         $this->message = null;
         
