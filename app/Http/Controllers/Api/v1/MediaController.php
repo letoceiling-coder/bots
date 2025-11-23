@@ -410,10 +410,37 @@ class MediaController extends Controller
     {
         $media = Media::findOrFail($id);
 
-        $request->validate([
+        // Валидация с учетом типа файла
+        $validator = \Validator::make($request->all(), [
             'folder_id' => 'nullable|exists:folders,id',
-            'file' => 'nullable|file|max:10240' // 10MB, для замены файла
+            'file' => 'nullable|file'
         ]);
+        
+        // Добавляем кастомную валидацию размера файла
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $maxSizeVideo = config('media.upload.max_size_video', 102400); // 100 МБ для видео
+            $maxSizeOther = config('media.upload.max_size', 10240); // 10 МБ для остальных
+            
+            $isVideo = str_starts_with($file->getMimeType(), 'video/');
+            $maxSize = $isVideo ? $maxSizeVideo : $maxSizeOther;
+            $maxSizeMB = $isVideo ? 100 : 10;
+            
+            if ($file->getSize() > ($maxSize * 1024)) {
+                $validator->errors()->add(
+                    'file',
+                    "Размер файла не должен превышать {$maxSizeMB} МБ"
+                );
+            }
+        }
+        
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка валидации',
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
         try {
             // Получаем folder_id, преобразуя пустую строку в null

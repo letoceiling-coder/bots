@@ -154,7 +154,7 @@
             @dragleave.prevent="isDragging = false"
           >
             <p class="text-center text-muted-foreground mb-4">
-              {{ isDragging ? 'Отпустите файлы для загрузки' : 'Перетащите файлы сюда или нажмите кнопку "Файлы". Поддерживаются все типы файлов до 10 МБ' }}
+              {{ isDragging ? 'Отпустите файлы для загрузки' : 'Перетащите файлы сюда или нажмите кнопку "Файлы". Видео до 100 МБ, остальные файлы до 10 МБ' }}
             </p>
 
             <div class="flex gap-2 max-w-3xl mx-auto">
@@ -164,7 +164,7 @@
                   type="file"
                   multiple
                   class="hidden"
-                  @change="handleFileSelect"
+                  @change="handleFileInputSelect"
                 />
                 <button
                   type="button"
@@ -468,7 +468,7 @@
                   ? (isFileSelected(file) ? 'border-primary border-2 cursor-pointer' : 'border-border cursor-pointer hover:border-primary')
                   : 'border-border'
               ]"
-              @click="selectionMode && (file.type === 'photo' || file.type === 'video') ? openFilePreview(file) : null"
+              @click="selectionMode ? handleFileSelect(file) : null"
             >
               <!-- Превью изображения -->
               <div class="relative aspect-video bg-muted/30 overflow-hidden flex-shrink-0">
@@ -510,8 +510,8 @@
                 </div>
                 <!-- Кнопка выбора (вместо просмотра в режиме выбора) -->
                 <button
-                  v-if="selectionMode && (file.type === 'photo' || file.type === 'video')"
-                  @click.stop="openFilePreview(file)"
+                  v-if="selectionMode"
+                  @click.stop="handleFileSelect(file)"
                   :class="[
                     'absolute inset-0 flex items-center justify-center transition-opacity cursor-pointer',
                     isFileSelected(file) ? 'opacity-100 bg-primary/30' : 'opacity-0 group-hover:opacity-100 bg-primary/20 hover:bg-primary/30'
@@ -793,9 +793,17 @@ export default {
     selectedFiles: {
       type: Array,
       default: () => []
+    },
+    modelValue: {
+      type: [Object, Array],
+      default: null
+    },
+    path: {
+      type: String,
+      default: 'webp'
     }
   },
-  emits: ['file-selected'],
+  emits: ['file-selected', 'update:modelValue'],
   setup(props, { emit }) {
     console.log('[Media] setup() вызван')
     
@@ -809,6 +817,7 @@ export default {
     const newFolderName = ref('')
     const isCreateFolderOpen = ref(false)
     const selectedFiles = ref([])
+    const internalSelectedFiles = ref([])
     const mediaFiles = ref([])
     const isDragging = ref(false)
     const isDraggingButton = ref(false)
@@ -1429,15 +1438,35 @@ export default {
       }
     }
 
-    // Обработка выбора файлов
-    const handleFileSelect = (e) => {
+    // Получить расширение файла (определяем раньше, чтобы использовать в других функциях)
+    const getFileExtension = (fileName) => {
+      if (!fileName) return ''
+      const parts = fileName.split('.')
+      return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : ''
+    }
+
+    // Проверка, является ли файл видео (определяем раньше, чтобы использовать в фильтрации)
+    const isVideoFile = (file) => {
+      if (file.type) {
+        return file.type.startsWith('video/')
+      }
+      const ext = getFileExtension(file.name)
+      return ['mp4', 'avi', 'mov', 'webm', 'mkv', 'wmv', 'flv'].includes(ext)
+    }
+
+    // Обработка выбора файлов через input
+    const handleFileInputSelect = (e) => {
       if (e.target.files) {
         const filesArray = Array.from(e.target.files)
-        // Фильтруем файлы по размеру (максимум 10 МБ)
-        const maxSize = 10 * 1024 * 1024 // 10 МБ
+        // Фильтруем файлы по размеру (видео до 100 МБ, остальные до 10 МБ)
+        const maxSizeVideo = 100 * 1024 * 1024 // 100 МБ для видео
+        const maxSizeOther = 10 * 1024 * 1024 // 10 МБ для остальных
         const validFiles = filesArray.filter(file => {
+          const isVideo = isVideoFile(file)
+          const maxSize = isVideo ? maxSizeVideo : maxSizeOther
           if (file.size > maxSize) {
-            console.warn(`[Media] Файл ${file.name} превышает 10 МБ и будет пропущен`)
+            const maxSizeMB = isVideo ? 100 : 10
+            console.warn(`[Media] Файл ${file.name} превышает ${maxSizeMB} МБ и будет пропущен`)
             return false
           }
           return true
@@ -1451,7 +1480,22 @@ export default {
         uploading.value = false // Убеждаемся, что uploading сброшен
         uploadProgress.value = { total: 0, completed: 0 } // Сбрасываем общий прогресс
         if (validFiles.length < filesArray.length) {
-          error.value = `Некоторые файлы превышают 10 МБ и не были добавлены`
+          const rejectedFiles = filesArray.filter(file => {
+            const isVideo = isVideoFile(file)
+            const maxSize = isVideo ? maxSizeVideo : maxSizeOther
+            return file.size > maxSize
+          })
+          const hasVideo = rejectedFiles.some(f => isVideoFile(f))
+          const hasOther = rejectedFiles.some(f => !isVideoFile(f))
+          let errorMsg = 'Некоторые файлы превышают лимит размера и не были добавлены'
+          if (hasVideo && hasOther) {
+            errorMsg = 'Некоторые файлы превышают лимит размера (видео до 100 МБ, остальные до 10 МБ) и не были добавлены'
+          } else if (hasVideo) {
+            errorMsg = 'Некоторые видео файлы превышают 100 МБ и не были добавлены'
+          } else {
+            errorMsg = 'Некоторые файлы превышают 10 МБ и не были добавлены'
+          }
+          error.value = errorMsg
         }
         console.log('[Media] Files selected:', validFiles.length, 'selectedFiles.value.length:', selectedFiles.value.length)
         // Очищаем input для возможности повторного выбора тех же файлов
@@ -1467,11 +1511,15 @@ export default {
       isDraggingButton.value = false
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const filesArray = Array.from(e.dataTransfer.files)
-        // Фильтруем файлы по размеру (максимум 10 МБ)
+        // Фильтруем файлы по размеру (видео до 100 МБ, остальные до 10 МБ)
+        const maxSizeVideo = 100 * 1024 * 1024 // 100 МБ для видео
+        const maxSizeOther = 10 * 1024 * 1024 // 10 МБ для остальных
         const validFiles = filesArray.filter(file => {
-          const maxSize = 10 * 1024 * 1024 // 10 МБ
+          const isVideo = isVideoFile(file)
+          const maxSize = isVideo ? maxSizeVideo : maxSizeOther
           if (file.size > maxSize) {
-            console.warn(`[Media] Файл ${file.name} превышает 10 МБ и будет пропущен`)
+            const maxSizeMB = isVideo ? 100 : 10
+            console.warn(`[Media] Файл ${file.name} превышает ${maxSizeMB} МБ и будет пропущен`)
             return false
           }
           return true
@@ -1485,7 +1533,22 @@ export default {
         uploading.value = false // Убеждаемся, что uploading сброшен
         uploadProgress.value = { total: 0, completed: 0 } // Сбрасываем общий прогресс
         if (validFiles.length < filesArray.length) {
-          error.value = `Некоторые файлы превышают 10 МБ и не были добавлены`
+          const rejectedFiles = filesArray.filter(file => {
+            const isVideo = isVideoFile(file)
+            const maxSize = isVideo ? maxSizeVideo : maxSizeOther
+            return file.size > maxSize
+          })
+          const hasVideo = rejectedFiles.some(f => isVideoFile(f))
+          const hasOther = rejectedFiles.some(f => !isVideoFile(f))
+          let errorMsg = 'Некоторые файлы превышают лимит размера и не были добавлены'
+          if (hasVideo && hasOther) {
+            errorMsg = 'Некоторые файлы превышают лимит размера (видео до 100 МБ, остальные до 10 МБ) и не были добавлены'
+          } else if (hasVideo) {
+            errorMsg = 'Некоторые видео файлы превышают 100 МБ и не были добавлены'
+          } else {
+            errorMsg = 'Некоторые файлы превышают 10 МБ и не были добавлены'
+          }
+          error.value = errorMsg
         }
         console.log('[Media] Files dropped:', validFiles.length, 'selectedFiles.value.length:', selectedFiles.value.length)
       }
@@ -1609,22 +1672,6 @@ export default {
       }
       const ext = getFileExtension(file.name)
       return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)
-    }
-
-    // Проверка, является ли файл видео
-    const isVideoFile = (file) => {
-      if (file.type) {
-        return file.type.startsWith('video/')
-      }
-      const ext = getFileExtension(file.name)
-      return ['mp4', 'avi', 'mov', 'webm', 'mkv', 'wmv', 'flv'].includes(ext)
-    }
-
-    // Получить расширение файла
-    const getFileExtension = (fileName) => {
-      if (!fileName) return ''
-      const parts = fileName.split('.')
-      return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : ''
     }
 
     // Получить превью файла (URL для File объекта)
@@ -1868,19 +1915,101 @@ export default {
       })
     }
 
+    // Инициализация internalSelectedFiles из selectedFiles prop (если передан)
+    watch(() => props.selectedFiles, (newValue) => {
+      if (newValue && Array.isArray(newValue) && newValue.length > 0) {
+        // Синхронизируем с selectedFiles prop
+        internalSelectedFiles.value = newValue.filter(f => f && typeof f === 'object' && 'id' in f)
+      }
+    }, { immediate: true })
+
+    // Обработка файла согласно path
+    const processFile = (file) => {
+      if (!file) return null
+
+      // Если path указан через точку (например, "variations.webp")
+      if (props.path.includes('.')) {
+        const pathParts = props.path.split('.')
+        let result = file
+        for (const part of pathParts) {
+          if (result && typeof result === 'object' && part in result) {
+            result = result[part]
+          } else {
+            return null
+          }
+        }
+        return result
+      }
+
+      // Если path - просто поле объекта
+      if (props.path && props.path !== 'webp') {
+        return file[props.path] || null
+      }
+
+      // По умолчанию возвращаем поле webp или url
+      return file.webp || file.url || file
+    }
+
     // Проверка, выбран ли файл
     const isFileSelected = (file) => {
-      if (!props.selectedFiles || !Array.isArray(props.selectedFiles)) {
-        return false
+      // Проверяем в internalSelectedFiles
+      if (internalSelectedFiles.value && Array.isArray(internalSelectedFiles.value)) {
+        return internalSelectedFiles.value.some(f => f.id === file.id)
       }
-      return props.selectedFiles.some(f => f.id === file.id)
+      // Fallback на props.selectedFiles
+      if (props.selectedFiles && Array.isArray(props.selectedFiles)) {
+        return props.selectedFiles.some(f => f.id === file.id)
+      }
+      return false
+    }
+
+    // Обработка выбора файла
+    const handleFileSelect = (file) => {
+      if (!props.selectionMode) {
+        openFilePreview(file)
+        return
+      }
+
+      // Проверяем, не выбран ли уже этот файл
+      const isAlreadySelected = isFileSelected(file)
+
+      if (isAlreadySelected) {
+        // Убираем из выбранных
+        internalSelectedFiles.value = internalSelectedFiles.value.filter(f => f.id !== file.id)
+      } else {
+        // Проверяем лимит
+        if (props.countFile === 1) {
+          // Если countFile = 1, заменяем выбранный файл
+          internalSelectedFiles.value = [file]
+          const processedFile = processFile(file)
+          emit('update:modelValue', processedFile)
+          emit('file-selected', file)
+          return
+        } else {
+          // Если countFile > 1, проверяем лимит
+          if (internalSelectedFiles.value.length >= props.countFile) {
+            // Показываем уведомление
+            alert(`Можно выбрать не более ${props.countFile} файлов`)
+            return
+          }
+          // Добавляем в выбранные
+          internalSelectedFiles.value.push(file)
+        }
+      }
+
+      // Обновляем v-model для множественного выбора
+      if (props.countFile > 1) {
+        const processedFiles = internalSelectedFiles.value.map(f => processFile(f))
+        emit('update:modelValue', processedFiles)
+      }
+
+      emit('file-selected', file)
     }
 
     // Открытие файла для просмотра (lightbox для фото/видео, новая вкладка для документов)
     const openFilePreview = (file) => {
-      // Если включен режим выбора, эмитим событие выбора файла
+      // Если включен режим выбора, не открываем превью
       if (props.selectionMode) {
-        emit('file-selected', file)
         return
       }
       
@@ -2502,6 +2631,7 @@ export default {
     return {
       selectionMode: props.selectionMode,
       isFileSelected,
+      handleFileSelect,
       loading,
       loadingMedia,
       uploading,
@@ -2549,6 +2679,7 @@ export default {
       handleFolderClick,
       fileInput,
       handleFileButtonClick,
+      handleFileInputSelect,
       handleFileSelect,
       handleDrop,
       handleDropOnButton,

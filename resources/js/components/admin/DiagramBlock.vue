@@ -167,8 +167,13 @@ export default {
             }
 
             // Отправка сообщений - синий
-            if (['sendMessage', 'sendDice', 'sendPoll', 'sendVenue', 'sendContact'].includes(method)) {
+            if (['sendMessage', 'sendDice', 'sendPoll', 'sendVenue', 'sendContact', 'question'].includes(method)) {
                 return `${baseClasses} border-blue-500 bg-blue-50/10`
+            }
+
+            // Медиа - фиолетовый
+            if (['sendPhoto', 'sendVideo', 'sendDocument', 'sendAudio', 'sendVoice', 'sendVideoNote', 'sendAnimation', 'sendSticker', 'sendLocation', 'sendMediaGroup'].includes(method)) {
+                return `${baseClasses} border-purple-500 bg-purple-50/10`
             }
 
             // Редактирование - желтый
@@ -177,13 +182,18 @@ export default {
             }
 
             // Управление - красный
-            if (['deleteMessage', 'pinChatMessage', 'unpinChatMessage'].includes(method)) {
+            if (['deleteMessage', 'pinChatMessage', 'unpinChatMessage', 'sendChatAction'].includes(method)) {
                 return `${baseClasses} border-red-500 bg-red-50/10`
             }
 
             // Кнопки - зеленый
             if (['replyKeyboard', 'inlineKeyboard'].includes(method)) {
                 return `${baseClasses} border-green-500 bg-green-50/10`
+            }
+
+            // Специальные функции - оранжевый
+            if (['managerChat', 'apiRequest', 'apiButtons', 'apiMediaGroup', 'assistant'].includes(method)) {
+                return `${baseClasses} border-orange-500 bg-orange-50/10`
             }
 
             return `${baseClasses} border-muted`
@@ -196,17 +206,34 @@ export default {
         const getMethodLabel = (method) => {
             const labels = {
                 sendMessage: 'Сообщение',
-                sendDice: 'Кубик',
-                sendPoll: 'Опрос',
-                sendVenue: 'Локация',
-                sendContact: 'Контакт',
+                sendDice: '🎲 Кубик',
+                sendPoll: '📊 Опрос',
+                sendVenue: '📍 Локация',
+                sendContact: '👤 Контакт',
+                sendPhoto: '📷 Фото',
+                sendVideo: '🎥 Видео',
+                sendDocument: '📄 Документ',
+                sendAudio: '🎵 Аудио',
+                sendVoice: '🎤 Голосовое',
+                sendVideoNote: '🎬 Видео-кружок',
+                sendAnimation: '🎞️ Анимация',
+                sendSticker: '😊 Стикер',
+                sendLocation: '📍 Локация',
+                sendMediaGroup: '🖼️ Группа медиа',
+                sendChatAction: '⏳ Действие',
                 editMessageText: 'Редактировать',
                 editMessageCaption: 'Редактировать',
                 deleteMessage: 'Удалить',
                 pinChatMessage: 'Закрепить',
                 unpinChatMessage: 'Открепить',
-                replyKeyboard: 'Клавиатура',
-                inlineKeyboard: 'Inline кнопки'
+                replyKeyboard: 'Reply-кнопки',
+                inlineKeyboard: 'Inline кнопки',
+                question: 'Задать вопрос',
+                managerChat: '💬 Менеджер',
+                apiRequest: '🌐 API',
+                apiButtons: '🔘 API Кнопки',
+                apiMediaGroup: '🖼️ API Медиа',
+                assistant: '🤖 AI'
             }
             return labels[method] || method
         }

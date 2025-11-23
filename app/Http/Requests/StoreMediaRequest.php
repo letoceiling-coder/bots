@@ -21,11 +21,12 @@ class StoreMediaRequest extends FormRequest
      */
     public function rules(): array
     {
-        $maxSize = config('media.upload.max_size', 10240); // По умолчанию 10 МБ
+        $maxSizeVideo = config('media.upload.max_size_video', 102400); // По умолчанию 100 МБ для видео
+        $maxSizeOther = config('media.upload.max_size', 10240); // По умолчанию 10 МБ для остальных
         $allowAllTypes = config('media.upload.allow_all_types', false);
         
         $rules = [
-            'file' => ['required', 'file', "max:{$maxSize}"],
+            'file' => ['required', 'file'],
             'folder_id' => 'nullable|exists:folders,id'
         ];
 
@@ -50,18 +51,45 @@ class StoreMediaRequest extends FormRequest
 
         return $rules;
     }
+
+    /**
+     * Configure the validator instance.
+     *
+     * @param  \Illuminate\Validation\Validator  $validator
+     * @return void
+     */
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            $file = $this->file('file');
+            
+            if ($file) {
+                $maxSizeVideo = config('media.upload.max_size_video', 102400); // 100 МБ для видео
+                $maxSizeOther = config('media.upload.max_size', 10240); // 10 МБ для остальных
+                
+                // Проверяем, является ли файл видео
+                $isVideo = str_starts_with($file->getMimeType(), 'video/');
+                $maxSize = $isVideo ? $maxSizeVideo : $maxSizeOther;
+                $maxSizeMB = $isVideo ? 100 : 10;
+                
+                if ($file->getSize() > ($maxSize * 1024)) {
+                    $validator->errors()->add(
+                        'file',
+                        "Размер файла не должен превышать {$maxSizeMB} МБ"
+                    );
+                }
+            }
+        });
+    }
     
     /**
      * Настройка сообщений об ошибках
      */
     public function messages(): array
     {
-        $maxSizeMB = round(config('media.upload.max_size', 10240) / 1024, 1);
-        
         return [
             'file.required' => 'Файл обязателен для загрузки',
             'file.file' => 'Загружаемый объект должен быть файлом',
-            'file.max' => "Размер файла не должен превышать {$maxSizeMB} МБ",
             'file.mimes' => 'Тип файла не разрешен для загрузки',
             'folder_id.exists' => 'Указанная папка не существует'
         ];

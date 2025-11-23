@@ -176,35 +176,175 @@ class ExtendedTelegraph extends Telegraph
             'bot_token_length' => strlen($this->getBotToken()),
         ]);
         
-        // Используем наш makeRequest для отправки
+        // Используем наш makeRequest для отправки (он правильно обрабатывает файлы)
         try {
-            $token = $this->getBotToken();
-            $url = $this->buildApiUrl($token, $endpoint);
+            // Проверяем, есть ли медиа файлы, которые требуют специальной обработки
+            $mediaMethods = ['sendPhoto', 'sendVideo', 'sendDocument', 'sendAudio', 'sendVoice', 'sendVideoNote', 'sendAnimation', 'sendSticker', 'sendMediaGroup'];
+            $mediaFields = ['photo', 'video', 'document', 'audio', 'voice', 'video_note', 'animation', 'sticker', 'media'];
+            $hasMedia = in_array($endpoint, $mediaMethods) && !empty(array_intersect_key($data, array_flip($mediaFields)));
             
-            // Выполняем HTTP запрос напрямую
-            $response = Http::post($url, $data);
-            
-            // Создаем объект TelegraphResponse из HTTP ответа
-            $telegraphResponse = TelegraphResponse::fromResponse($response);
-            
-            // Получаем результат для логирования
-            $result = $response->json();
-            
-            // Логируем результат
-            $isSuccessful = isset($result['ok']) && $result['ok'] === true;
-            $logData = [
-                'endpoint' => $endpoint,
-                'success' => $isSuccessful,
-                'message_id' => $result['result']['message_id'] ?? null,
-            ];
-            
-            // Если запрос не успешен, логируем ошибку
-            if (!$isSuccessful) {
-                $logData['error'] = $result['description'] ?? $result['error_code'] ?? 'Unknown error';
-                $logData['full_response'] = $result;
-                Log::error('Telegram message send failed', $logData);
+            if ($hasMedia) {
+                // Для медиа делаем запрос напрямую, чтобы получить Response для TelegraphResponse
+                $token = $this->getBotToken();
+                $url = $this->buildApiUrl($token, $endpoint);
+                
+                // Специальная обработка для sendMediaGroup
+                if ($endpoint === 'sendMediaGroup' && isset($data['media']) && is_array($data['media'])) {
+                    $mediaFiles = [];
+                    $mediaArray = [];
+                    
+                    foreach ($data['media'] as $index => $item) {
+                        $mediaType = $item['type'] ?? 'photo';
+                        $mediaPath = $item['media'] ?? '';
+                        
+                        $mediaItem = ['type' => $mediaType];
+                        if (!empty($item['caption'])) {
+                            $mediaItem['caption'] = $item['caption'];
+                        }
+                        
+                        if (is_string($mediaPath) && str_starts_with($mediaPath, '/upload/')) {
+                            $fullPath = public_path($mediaPath);
+                            if (file_exists($fullPath)) {
+                                $fileKey = $mediaType . $index;
+                                $mediaFiles[$fileKey] = new \Illuminate\Http\File($fullPath);
+                                $mediaItem['media'] = 'attach://' . $fileKey;
+                            } else {
+                                $mediaItem['media'] = url($mediaPath);
+                            }
+                        } else {
+                            $mediaItem['media'] = $mediaPath;
+                        }
+                        
+                        $mediaArray[] = $mediaItem;
+                    }
+                    
+                    $http = Http::asMultipart();
+                    foreach ($data as $key => $value) {
+                        if ($key !== 'media') {
+                            $http = $http->attach($key, (string)$value);
+                        }
+                    }
+                    $http = $http->attach('media', json_encode($mediaArray), null, ['Content-Type' => 'application/json']);
+                    foreach ($mediaFiles as $fileKey => $file) {
+                        $http = $http->attach($fileKey, file_get_contents($file->getPathname()), $file->getFilename());
+                    }
+                    $response = $http->post($url);
+                } else {
+                    // Обработка одиночных файлов
+                    $files = [];
+                    $fileFields = ['photo', 'video', 'document', 'audio', 'voice', 'video_note', 'animation', 'sticker'];
+                    
+                    foreach ($fileFields as $field) {
+                        if (isset($data[$field])) {
+                            $value = $data[$field];
+                            if ($value instanceof \Illuminate\Http\File || $value instanceof \Illuminate\Http\UploadedFile) {
+                                $files[$field] = $value;
+                                unset($data[$field]);
+                            } elseif (is_string($value) && str_starts_with($value, '/upload/')) {
+                                $fullPath = public_path($value);
+                                if (file_exists($fullPath)) {
+                                    $files[$field] = new \Illuminate\Http\File($fullPath);
+                                    unset($data[$field]);
+                                } else {
+                                    $data[$field] = url($value);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!empty($files)) {
+                        $http = Http::asMultipart();
+                        foreach ($data as $key => $value) {
+                            if (is_array($value)) {
+                                $http = $http->attach($key, json_encode($value), null, ['Content-Type' => 'application/json']);
+                            } else {
+                                $http = $http->attach($key, (string)$value);
+                            }
+                        }
+                        foreach ($files as $field => $file) {
+                            $http = $http->attach($field, file_get_contents($file->getPathname()), $file->getFilename());
+                        }
+                        $response = $http->post($url);
+                    } else {
+                        $response = Http::post($url, $data);
+                    }
+                }
+                
+                $telegraphResponse = TelegraphResponse::fromResponse($response);
+                
+                $result = $response->json();
+                $isSuccessful = isset($result['ok']) && $result['ok'] === true;
+                $logData = [
+                    'endpoint' => $endpoint,
+                    'success' => $isSuccessful,
+                    'message_id' => $result['result']['message_id'] ?? ($result['result'][0]['message_id'] ?? null),
+                ];
+                
+                if (!$isSuccessful) {
+                    $logData['error'] = $result['description'] ?? $result['error_code'] ?? 'Unknown error';
+                    $logData['full_response'] = $result;
+                    Log::error('Telegram message send failed', $logData);
+                } else {
+                    Log::info('Telegram message sent', $logData);
+                }
             } else {
-                Log::info('Telegram message sent', $logData);
+                // Для обычных сообщений используем стандартный HTTP запрос
+                $token = $this->getBotToken();
+                $url = $this->buildApiUrl($token, $endpoint);
+                
+                try {
+                    // Добавляем retry для сетевых ошибок (3 попытки с задержкой 1 секунда)
+                    $response = Http::timeout(30)
+                        ->retry(3, 1000, function ($exception) {
+                            // Retry только для сетевых ошибок
+                            $exceptionClass = get_class($exception);
+                            return str_contains($exceptionClass, 'ConnectionException') 
+                                || str_contains($exceptionClass, 'ConnectException')
+                                || str_contains($exception->getMessage(), 'Connection refused')
+                                || str_contains($exception->getMessage(), 'timeout');
+                        })
+                        ->post($url, $data);
+                    
+                    $telegraphResponse = TelegraphResponse::fromResponse($response);
+                    
+                    $result = $response->json();
+                    $isSuccessful = isset($result['ok']) && $result['ok'] === true;
+                    $logData = [
+                        'endpoint' => $endpoint,
+                        'success' => $isSuccessful,
+                        'message_id' => $result['result']['message_id'] ?? null,
+                    ];
+                    
+                    if (!$isSuccessful) {
+                        $logData['error'] = $result['description'] ?? $result['error_code'] ?? 'Unknown error';
+                        $logData['full_response'] = $result;
+                        Log::error('Telegram message send failed', $logData);
+                    } else {
+                        Log::info('Telegram message sent', $logData);
+                    }
+                } catch (\Exception $e) {
+                    // Обработка всех исключений, включая сетевые ошибки
+                    $errorMessage = $e->getMessage();
+                    $isConnectionError = str_contains($errorMessage, 'Connection refused')
+                        || str_contains($errorMessage, 'Connection')
+                        || str_contains($errorMessage, 'timeout')
+                        || str_contains(get_class($e), 'ConnectionException')
+                        || str_contains(get_class($e), 'ConnectException');
+                    
+                    Log::error('Exception while sending Telegram message', [
+                        'endpoint' => $endpoint,
+                        'error' => $errorMessage,
+                        'exception_class' => get_class($e),
+                        'is_connection_error' => $isConnectionError,
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    
+                    if ($isConnectionError) {
+                        throw new \Exception('Ошибка подключения к Telegram API. Проверьте интернет-соединение и попробуйте позже. Детали: ' . $errorMessage);
+                    }
+                    
+                    throw $e;
+                }
             }
             
             // Очищаем данные после отправки
@@ -272,15 +412,13 @@ class ExtendedTelegraph extends Telegraph
 
     /**
      * Установить inline клавиатуру
+     * Метод отсутствует в родительском классе, поэтому реализован здесь
      * 
      * @param array $inlineKeyboard Массив inline кнопок
-     * @return Telegraph
+     * @return $this
      */
-    public function inlineKeyboard(array $inlineKeyboard): Telegraph
+    public function inlineKeyboard(array $inlineKeyboard): self
     {
-        // Вызываем родительский метод
-        $result = parent::inlineKeyboard($inlineKeyboard);
-        
         // Сохраняем для нашего использования
         if (!isset($this->data)) {
             $this->data = [];
@@ -344,8 +482,13 @@ class ExtendedTelegraph extends Telegraph
 
     /**
      * Выполнить запрос к Telegram API
+     * Публичный метод для использования в контроллерах
+     * 
+     * @param string $method Метод Telegram API
+     * @param array $data Данные для запроса
+     * @return array
      */
-    protected function makeRequest(string $method, array $data = []): array
+    public function makeRequest(string $method, array $data = []): array
     {
         $token = $this->getBotToken();
 
@@ -395,7 +538,108 @@ class ExtendedTelegraph extends Telegraph
 
         $url = $this->buildApiUrl($token, $method);
         
-        $response = Http::post($url, $data);
+        // Специальная обработка для sendMediaGroup
+        if ($method === 'sendMediaGroup' && isset($data['media']) && is_array($data['media'])) {
+            $mediaFiles = [];
+            $mediaArray = [];
+            
+            // Обрабатываем каждый элемент медиа
+            foreach ($data['media'] as $index => $item) {
+                $mediaType = $item['type'] ?? 'photo';
+                $mediaPath = $item['media'] ?? '';
+                
+                $mediaItem = ['type' => $mediaType];
+                if (!empty($item['caption'])) {
+                    $mediaItem['caption'] = $item['caption'];
+                }
+                
+                // Если это локальный файл, добавляем его для отправки
+                if (is_string($mediaPath) && str_starts_with($mediaPath, '/upload/')) {
+                    $fullPath = public_path($mediaPath);
+                    if (file_exists($fullPath)) {
+                        $fileKey = $mediaType . $index; // photo0, photo1, video0 и т.д.
+                        $mediaFiles[$fileKey] = new \Illuminate\Http\File($fullPath);
+                        $mediaItem['media'] = 'attach://' . $fileKey;
+                    } else {
+                        $mediaItem['media'] = url($mediaPath);
+                    }
+                } else {
+                    $mediaItem['media'] = $mediaPath;
+                }
+                
+                $mediaArray[] = $mediaItem;
+            }
+            
+            // Отправляем через multipart/form-data
+            $http = Http::asMultipart();
+            
+            // Добавляем chat_id и другие параметры
+            foreach ($data as $key => $value) {
+                if ($key !== 'media') {
+                    $http = $http->attach($key, (string)$value);
+                }
+            }
+            
+            // Добавляем массив media как JSON
+            $http = $http->attach('media', json_encode($mediaArray), null, ['Content-Type' => 'application/json']);
+            
+            // Добавляем файлы
+            foreach ($mediaFiles as $fileKey => $file) {
+                $http = $http->attach($fileKey, file_get_contents($file->getPathname()), $file->getFilename());
+            }
+            
+            $response = $http->post($url);
+        } else {
+            // Обычная обработка для других методов
+            $files = [];
+            $fileFields = ['photo', 'video', 'document', 'audio', 'voice', 'video_note', 'animation', 'sticker'];
+            
+            foreach ($fileFields as $field) {
+                if (isset($data[$field])) {
+                    $value = $data[$field];
+                    // Если это объект File или UploadedFile, сохраняем для attach
+                    if ($value instanceof \Illuminate\Http\File || $value instanceof \Illuminate\Http\UploadedFile) {
+                        $files[$field] = $value;
+                        unset($data[$field]);
+                    } elseif (is_string($value) && str_starts_with($value, '/upload/')) {
+                        // Если это локальный путь, проверяем существование файла
+                        $fullPath = public_path($value);
+                        if (file_exists($fullPath)) {
+                            $files[$field] = new \Illuminate\Http\File($fullPath);
+                            unset($data[$field]);
+                        } else {
+                            // Если файл не найден, используем полный URL
+                            $data[$field] = url($value);
+                        }
+                    }
+                }
+            }
+            
+            // Если есть файлы, используем attach для multipart/form-data
+            if (!empty($files)) {
+                $http = Http::asMultipart();
+                
+                // Добавляем обычные параметры как части multipart
+                foreach ($data as $key => $value) {
+                    if (is_array($value)) {
+                        // Для массивов используем JSON
+                        $http = $http->attach($key, json_encode($value), null, ['Content-Type' => 'application/json']);
+                    } else {
+                        // Для обычных значений используем attach как строку
+                        $http = $http->attach($key, (string)$value);
+                    }
+                }
+                
+                // Добавляем файлы
+                foreach ($files as $field => $file) {
+                    $http = $http->attach($field, file_get_contents($file->getPathname()), $file->getFilename());
+                }
+                
+                $response = $http->post($url);
+            } else {
+                $response = Http::post($url, $data);
+            }
+        }
         
         if (!$response->successful()) {
             $errorBody = $response->body();
@@ -552,17 +796,23 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Редактировать текст сообщения через API
      * 
-     * @param int $messageId ID сообщения
+     * @param int|null $messageId ID сообщения
      * @param string $text Новый текст
      * @param array|null $replyMarkup Клавиатура
+     * @param string|null $inlineMessageId ID inline сообщения (альтернатива message_id)
      * @return array
      */
-    public function editMessageTextApi(int $messageId, string $text, ?array $replyMarkup = null): array
+    public function editMessageTextApi(?int $messageId, string $text, ?array $replyMarkup = null, ?string $inlineMessageId = null): array
     {
         $data = [
-            'message_id' => $messageId,
             'text' => $text,
         ];
+
+        if ($messageId !== null) {
+            $data['message_id'] = $messageId;
+        } elseif ($inlineMessageId !== null) {
+            $data['inline_message_id'] = $inlineMessageId;
+        }
 
         if ($replyMarkup) {
             $data['reply_markup'] = $replyMarkup;
@@ -574,16 +824,21 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Редактировать подпись к медиа через API
      * 
-     * @param int $messageId ID сообщения
+     * @param int|null $messageId ID сообщения
      * @param string|null $caption Новая подпись
      * @param array|null $replyMarkup Клавиатура
+     * @param string|null $inlineMessageId ID inline сообщения (альтернатива message_id)
      * @return array
      */
-    public function editMessageCaptionApi(int $messageId, ?string $caption = null, ?array $replyMarkup = null): array
+    public function editMessageCaptionApi(?int $messageId, ?string $caption = null, ?array $replyMarkup = null, ?string $inlineMessageId = null): array
     {
-        $data = [
-            'message_id' => $messageId,
-        ];
+        $data = [];
+
+        if ($messageId !== null) {
+            $data['message_id'] = $messageId;
+        } elseif ($inlineMessageId !== null) {
+            $data['inline_message_id'] = $inlineMessageId;
+        }
 
         if ($caption !== null) {
             $data['caption'] = $caption;
@@ -599,14 +854,16 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Удалить сообщение через API
      * 
-     * @param int $messageId ID сообщения
+     * @param int|null $messageId ID сообщения (если null, удаляется последнее сообщение бота)
      * @return array
      */
-    public function deleteMessageApi(int $messageId): array
+    public function deleteMessageApi(?int $messageId): array
     {
-        $data = [
-            'message_id' => $messageId,
-        ];
+        $data = [];
+
+        if ($messageId !== null) {
+            $data['message_id'] = $messageId;
+        }
 
         return $this->makeRequest('deleteMessage', $data);
     }
@@ -700,16 +957,19 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Закрепить сообщение через API
      * 
-     * @param int $messageId ID сообщения
+     * @param int|null $messageId ID сообщения (если null, закрепляется последнее сообщение бота)
      * @param bool $disableNotification Отключить уведомление
      * @return array
      */
-    public function pinChatMessageApi(int $messageId, bool $disableNotification = false): array
+    public function pinChatMessageApi(?int $messageId, bool $disableNotification = false): array
     {
         $data = [
-            'message_id' => $messageId,
             'disable_notification' => $disableNotification,
         ];
+
+        if ($messageId !== null) {
+            $data['message_id'] = $messageId;
+        }
 
         return $this->makeRequest('pinChatMessage', $data);
     }
@@ -1078,6 +1338,215 @@ class ExtendedTelegraph extends Telegraph
     public function getWebhookInfoApi(): array
     {
         return $this->makeRequest('getWebhookInfo');
+    }
+
+    /**
+     * Отправить фото
+     * 
+     * Примеры использования:
+     * - $telegraph->photo('/upload/obshhaia/692030a474249_1763717284.png')
+     * - $telegraph->photo('https://example.com/image.jpg')
+     * - $telegraph->photo('AgACAgIAAxkBAAIBY2YtQ2QAAUf8BQABHxYAAQABAgADBAADMwEAAfsBAAIfBAAB')
+     * 
+     * @param string $path Путь к файлу или URL или file_id
+     * @param string|null $filename Имя файла (опционально)
+     * @return $this
+     */
+    public function photo(string $path, ?string $filename = null): self
+    {
+        $this->endpoint = 'sendPhoto';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        // Сохраняем путь как есть, обработка будет в makeRequest() или send()
+        $this->data['photo'] = $path;
+        return $this;
+    }
+
+    /**
+     * Отправить видео
+     * 
+     * Примеры использования:
+     * - $telegraph->video('/upload/video/69233d131b3ad_1763917075.mp4')
+     * - $telegraph->video('https://example.com/video.mp4')
+     * - $telegraph->video('BAACAgIAAxkBAAIBY2YtQ2QAAUf8BQABHxYAAQABAgADBAADMwEAAfsBAAIfBAAB')
+     * 
+     * @param string $path Путь к файлу или URL или file_id
+     * @param string|null $filename Имя файла (опционально)
+     * @return $this
+     */
+    public function video(string $path, ?string $filename = null): self
+    {
+        $this->endpoint = 'sendVideo';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['video'] = $path;
+        return $this;
+    }
+
+    /**
+     * Отправить документ
+     * 
+     * Примеры использования:
+     * - $telegraph->document('/upload/dokumenty/69233d3782780_1763917111.html')
+     * - $telegraph->document('https://example.com/document.pdf')
+     * - $telegraph->document('BQACAgIAAxkBAAIBY2YtQ2QAAUf8BQABHxYAAQABAgADBAADMwEAAfsBAAIfBAAB')
+     * 
+     * @param string $path Путь к файлу или URL или file_id
+     * @param string|null $filename Имя файла (опционально)
+     * @return $this
+     */
+    public function document(string $path, ?string $filename = null): self
+    {
+        $this->endpoint = 'sendDocument';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['document'] = $path;
+        return $this;
+    }
+
+    /**
+     * Отправить аудио
+     * 
+     * Примеры использования:
+     * - $telegraph->audio('/upload/audio/example.mp3')
+     * - $telegraph->audio('https://example.com/audio.mp3')
+     * - $telegraph->audio('CQACAgIAAxkBAAIBY2YtQ2QAAUf8BQABHxYAAQABAgADBAADMwEAAfsBAAIfBAAB')
+     * 
+     * @param string $path Путь к файлу или URL или file_id
+     * @param string|null $filename Имя файла (опционально)
+     * @return $this
+     */
+    public function audio(string $path, ?string $filename = null): self
+    {
+        $this->endpoint = 'sendAudio';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['audio'] = $path;
+        return $this;
+    }
+
+    /**
+     * Отправить голосовое сообщение
+     * Совместимо с родительским классом DefStudio\Telegraph\Telegraph
+     * 
+     * Примеры использования:
+     * - $telegraph->voice('/upload/voice/example.ogg')
+     * - $telegraph->voice('https://example.com/voice.ogg')
+     * - $telegraph->voice('AwACAgIAAxkBAAIBY2YtQ2QAAUf8BQABHxYAAQABAgADBAADMwEAAfsBAAIfBAAB')
+     * 
+     * @param string $path Путь к файлу или URL или file_id
+     * @param string|null $filename Имя файла (опционально)
+     * @return $this
+     */
+    public function voice(string $path, ?string $filename = null): self
+    {
+        $this->endpoint = 'sendVoice';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['voice'] = $path;
+        return $this;
+    }
+
+    /**
+     * Отправить видео-кружок
+     * 
+     * @param string $videoNote URL файла или file_id
+     * @return $this
+     */
+    public function videoNote(string $videoNote): self
+    {
+        $this->endpoint = 'sendVideoNote';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['video_note'] = $videoNote;
+        return $this;
+    }
+
+    /**
+     * Отправить анимацию/GIF
+     * Совместимо с родительским классом DefStudio\Telegraph\Telegraph
+     * 
+     * Примеры использования:
+     * - $telegraph->animation('/upload/obshhaia/692030bfe4a64_1763717311.png')
+     * - $telegraph->animation('https://example.com/animation.gif')
+     * - $telegraph->animation('CgACAgIAAxkBAAIBY2YtQ2QAAUf8BQABHxYAAQABAgADBAADMwEAAfsBAAIfBAAB')
+     * 
+     * @param string $path Путь к файлу или URL или file_id
+     * @param string|null $filename Имя файла (опционально)
+     * @return $this
+     */
+    public function animation(string $path, ?string $filename = null): self
+    {
+        $this->endpoint = 'sendAnimation';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['animation'] = $path;
+        return $this;
+    }
+
+    /**
+     * Отправить стикер
+     * Совместимо с родительским классом DefStudio\Telegraph\Telegraph
+     * 
+     * Примеры использования:
+     * - $telegraph->sticker('/upload/stickers/example.webp')
+     * - $telegraph->sticker('https://example.com/sticker.webp')
+     * - $telegraph->sticker('CAACAgIAAxkBAAIBY2YtQ2QAAUf8BQABHxYAAQABAgADBAADMwEAAfsBAAIfBAAB')
+     * 
+     * @param string $path Путь к файлу или URL или file_id
+     * @param string|null $filename Имя файла (опционально)
+     * @return $this
+     */
+    public function sticker(string $path, ?string $filename = null): self
+    {
+        $this->endpoint = 'sendSticker';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['sticker'] = $path;
+        return $this;
+    }
+
+    /**
+     * Отправить локацию
+     * 
+     * @param float $latitude Широта
+     * @param float $longitude Долгота
+     * @return $this
+     */
+    public function location(float $latitude, float $longitude): self
+    {
+        $this->endpoint = 'sendLocation';
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['latitude'] = $latitude;
+        $this->data['longitude'] = $longitude;
+        return $this;
+    }
+
+    /**
+     * Установить подпись к медиа
+     * 
+     * @param string|null $caption Подпись
+     * @return $this
+     */
+    public function caption(?string $caption): self
+    {
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        if ($caption !== null) {
+            $this->data['caption'] = $caption;
+        }
+        return $this;
     }
 }
 

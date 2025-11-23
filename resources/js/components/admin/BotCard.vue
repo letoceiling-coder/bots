@@ -142,6 +142,7 @@
             :available-blocks="blocks"
             @close="showSettingsSidebar = false"
             @save="handleBlockSave"
+            @update="handleBlockUpdate"
         />
 
         <!-- Test Run Modal -->
@@ -356,6 +357,18 @@ export default {
             showSettingsSidebar.value = true
         }
 
+        const handleBlockUpdate = (updatedBlock) => {
+            // Обновление блока в реальном времени при изменении настроек
+            const block = blocks.value.find(b => b.id === updatedBlock.id)
+            if (block) {
+                Object.assign(block, updatedBlock)
+            }
+            // Также обновляем selectedBlock для синхронизации
+            if (selectedBlock.value && selectedBlock.value.id === updatedBlock.id) {
+                Object.assign(selectedBlock.value, updatedBlock)
+            }
+        }
+
         const handleBlockSave = (updatedBlock) => {
             const block = blocks.value.find(b => b.id === updatedBlock.id)
             if (block) {
@@ -418,106 +431,597 @@ export default {
                 return // Не создаем, если уже есть блоки
             }
 
-            // Блок 1: Приветственное сообщение
+            const allBlocks = []
+            let currentX = 50
+            let currentY = 50
+            const blockSpacingX = 200
+            const blockSpacingY = 200
+            const blocksPerRow = 5
+
+            // Блок 1: Приветственное сообщение (/start)
             const block1 = {
                 id: blockIdCounter++,
                 label: '/start',
-                x: 50,
-                y: 50,
+                x: currentX,
+                y: currentY,
                 method: 'sendMessage',
                 methodData: {
-                    text: 'Добро пожаловать! Выберите действие:',
-                    parse_mode: ''
+                    text: '👋 Добро пожаловать в нашего бота!\n\nВыберите действие из меню ниже или используйте команды:\n/help - помощь\n/info - информация\n/settings - настройки',
+                    parse_mode: 'HTML'
                 },
                 nextAction: 'specific',
-                nextBlockId: null, // Будет установлен после создания block2
+                nextBlockId: null,
                 command: '/start'
             }
+            allBlocks.push(block1)
+            currentX += blockSpacingX
 
-            // Блок 2: Клавиатура ответа
+            // Блок 2: Reply-кнопки
             const block2 = {
                 id: blockIdCounter++,
-                label: 'Клавиатура',
-                x: 250,
-                y: 50,
+                label: 'Reply-кнопки',
+                x: currentX,
+                y: currentY,
                 method: 'replyKeyboard',
                 methodData: {
                     keyboard: [
-                        [
-                            { text: 'Информация' },
-                            { text: 'Помощь' }
-                        ],
-                        [
-                            { text: 'Настройки' }
-                        ]
+                        [{ text: '📋 Информация' }, { text: '❓ Помощь' }],
+                        [{ text: '⚙️ Настройки' }, { text: '📞 Контакты' }],
+                        [{ text: '🔙 Назад' }]
                     ],
                     resize_keyboard: true,
                     one_time_keyboard: false
                 },
                 nextAction: 'specific',
-                nextBlockId: null // Будет установлен после создания block3
+                nextBlockId: null
             }
+            allBlocks.push(block2)
+            currentX += blockSpacingX
 
-            // Блок 3: Сообщение с информацией
+            // Блок 3: Inline кнопки
             const block3 = {
                 id: blockIdCounter++,
-                label: 'Информация',
-                x: 450,
-                y: 50,
-                method: 'sendMessage',
+                label: 'Inline кнопки',
+                x: currentX,
+                y: currentY,
+                method: 'inlineKeyboard',
                 methodData: {
-                    text: 'Это информационное сообщение. Здесь может быть любая полезная информация для пользователей.',
-                    parse_mode: ''
+                    inline_keyboard: [
+                        [{ text: '✅ Подтвердить', callback_data: 'confirm' }, { text: '❌ Отменить', callback_data: 'cancel' }],
+                        [{ text: '🌐 Открыть сайт', url: 'https://example.com' }],
+                        [{ text: '📱 Поделиться', switch_inline_query: 'Поделиться ботом' }]
+                    ]
                 },
                 nextAction: 'specific',
-                nextBlockId: null // Будет установлен после создания block4
+                nextBlockId: null
             }
+            allBlocks.push(block3)
+            currentX += blockSpacingX
 
             // Блок 4: Опрос
             const block4 = {
                 id: blockIdCounter++,
                 label: 'Опрос',
-                x: 250,
-                y: 200,
+                x: currentX,
+                y: currentY,
                 method: 'sendPoll',
                 methodData: {
-                    question: 'Как вам наш бот?',
-                    options: [
-                        'Отлично!',
-                        'Хорошо',
-                        'Нормально',
-                        'Плохо'
-                    ],
+                    question: '📊 Оцените качество нашего сервиса',
+                    options: ['⭐ Отлично', '👍 Хорошо', '😐 Нормально', '👎 Плохо', '💔 Очень плохо'],
                     is_anonymous: false,
                     type: 'regular'
                 },
                 nextAction: 'specific',
-                nextBlockId: null // Будет установлен после создания block5
+                nextBlockId: null
             }
+            allBlocks.push(block4)
+            currentX += blockSpacingX
 
-            // Блок 5: Финальное сообщение
+            // Блок 5: Кубик
             const block5 = {
                 id: blockIdCounter++,
-                label: 'Завершение',
-                x: 450,
-                y: 200,
-                method: 'sendMessage',
+                label: 'Кубик',
+                x: currentX,
+                y: currentY,
+                method: 'sendDice',
                 methodData: {
-                    text: 'Спасибо за использование бота! Если у вас есть вопросы, используйте команду /help',
-                    parse_mode: ''
+                    emoji: '🎲'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block5)
+            
+            // Переход на новую строку
+            currentX = 50
+            currentY += blockSpacingY
+
+            // Блок 6: Фото
+            const block6 = {
+                id: blockIdCounter++,
+                label: 'Фото',
+                x: currentX,
+                y: currentY,
+                method: 'sendPhoto',
+                methodData: {
+                    photo: '/upload/obshhaia/692030a474249_1763717284.png', // Тестовое изображение
+                    caption: '📷 Пример фотографии\n\nЭто тестовое изображение для демонстрации функционала отправки фото.',
+                    parse_mode: 'HTML'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block6)
+            currentX += blockSpacingX
+
+            // Блок 7: Видео
+            const block7 = {
+                id: blockIdCounter++,
+                label: 'Видео',
+                x: currentX,
+                y: currentY,
+                method: 'sendVideo',
+                methodData: {
+                    video: '/upload/video/69233d131b3ad_1763917075.mp4', // Тестовое видео
+                    caption: '🎥 Пример видео\n\nДемонстрация отправки видео файла через бота.',
+                    parse_mode: 'HTML',
+                    duration: 60,
+                    width: 1280,
+                    height: 720
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block7)
+            currentX += blockSpacingX
+
+            // Блок 8: Документ
+            const block8 = {
+                id: blockIdCounter++,
+                label: 'Документ',
+                x: currentX,
+                y: currentY,
+                method: 'sendDocument',
+                methodData: {
+                    document: '/upload/dokumenty/69233d3782780_1763917111.html', // Тестовый документ
+                    caption: '📄 Пример документа\n\nИнструкция по использованию бота.',
+                    parse_mode: 'HTML'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block8)
+            currentX += blockSpacingX
+
+            // Блок 9: Аудио
+            const block9 = {
+                id: blockIdCounter++,
+                label: 'Аудио',
+                x: currentX,
+                y: currentY,
+                method: 'sendAudio',
+                methodData: {
+                    audio: null, // Аудио файлы отсутствуют, выберите через FilePickerButton
+                    caption: '🎵 Пример аудио файла',
+                    parse_mode: '',
+                    duration: 180,
+                    performer: 'Исполнитель',
+                    title: 'Название трека'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block9)
+            currentX += blockSpacingX
+
+            // Блок 10: Голосовое
+            const block10 = {
+                id: blockIdCounter++,
+                label: 'Голосовое',
+                x: currentX,
+                y: currentY,
+                method: 'sendVoice',
+                methodData: {
+                    voice: null, // Голосовые файлы отсутствуют, выберите через FilePickerButton
+                    caption: '🎤 Голосовое сообщение\n\nПривет! Это пример голосового сообщения.',
+                    parse_mode: 'HTML',
+                    duration: 30
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block10)
+            
+            // Переход на новую строку
+            currentX = 50
+            currentY += blockSpacingY
+
+            // Блок 11: Видео-кружок
+            const block11 = {
+                id: blockIdCounter++,
+                label: 'Видео-кружок',
+                x: currentX,
+                y: currentY,
+                method: 'sendVideoNote',
+                methodData: {
+                    video_note: '/upload/video/69233d131b3ad_1763917075.mp4', // Используем то же видео
+                    duration: 15,
+                    length: 360
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block11)
+            currentX += blockSpacingX
+
+            // Блок 12: Анимация
+            const block12 = {
+                id: blockIdCounter++,
+                label: 'Анимация',
+                x: currentX,
+                y: currentY,
+                method: 'sendAnimation',
+                methodData: {
+                    animation: '/upload/obshhaia/692030bfe4a64_1763717311.png', // Тестовое изображение (можно использовать как GIF)
+                    caption: '🎞️ Пример анимации GIF\n\nДемонстрация отправки анимированного изображения.',
+                    parse_mode: 'HTML',
+                    duration: 5,
+                    width: 480,
+                    height: 480
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block12)
+            currentX += blockSpacingX
+
+            // Блок 13: Стикер
+            const block13 = {
+                id: blockIdCounter++,
+                label: 'Стикер',
+                x: currentX,
+                y: currentY,
+                method: 'sendSticker',
+                methodData: {
+                    sticker: null // Введите file_id стикера из Telegram или выберите файл через FilePickerButton
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block13)
+            currentX += blockSpacingX
+
+            // Блок 14: Локация
+            const block14 = {
+                id: blockIdCounter++,
+                label: 'Локация',
+                x: currentX,
+                y: currentY,
+                method: 'sendLocation',
+                methodData: {
+                    latitude: 55.7558,
+                    longitude: 37.6173,
+                    horizontal_accuracy: 50,
+                    live_period: 3600,
+                    heading: 90,
+                    proximity_alert_radius: 100
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block14)
+            currentX += blockSpacingX
+
+            // Блок 15: Место/Заведение
+            const block15 = {
+                id: blockIdCounter++,
+                label: 'Место',
+                x: currentX,
+                y: currentY,
+                method: 'sendVenue',
+                methodData: {
+                    latitude: 55.7558,
+                    longitude: 37.6173,
+                    title: '📍 Красная площадь',
+                    address: 'Москва, Красная площадь, 1'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block15)
+            
+            // Переход на новую строку
+            currentX = 50
+            currentY += blockSpacingY
+
+            // Блок 16: Контакт
+            const block16 = {
+                id: blockIdCounter++,
+                label: 'Контакт',
+                x: currentX,
+                y: currentY,
+                method: 'sendContact',
+                methodData: {
+                    phone_number: '+79991234567',
+                    first_name: 'Иван',
+                    last_name: 'Иванов'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block16)
+            currentX += blockSpacingX
+
+            // Блок 17: Группа медиа
+            const block17 = {
+                id: blockIdCounter++,
+                label: 'Группа медиа',
+                x: currentX,
+                y: currentY,
+                method: 'sendMediaGroup',
+                methodData: {
+                    media: [
+                        { 
+                            type: 'photo', 
+                            media: '/upload/obshhaia/692030a474249_1763717284.png', // Тестовое фото 1
+                            caption: 'Фото 1 из галереи'
+                        },
+                        { 
+                            type: 'photo', 
+                            media: '/upload/obshhaia/692030bfe4a64_1763717311.png', // Тестовое фото 2
+                            caption: 'Фото 2 из галереи'
+                        },
+                        { 
+                            type: 'photo', 
+                            media: '/upload/obshhaia/692030bfe6723_1763717311.png', // Тестовое фото 3
+                            caption: 'Фото 3 из галереи'
+                        }
+                    ]
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block17)
+            currentX += blockSpacingX
+
+            // Блок 18: Индикатор действия
+            const block18 = {
+                id: blockIdCounter++,
+                label: 'Действие',
+                x: currentX,
+                y: currentY,
+                method: 'sendChatAction',
+                methodData: {
+                    action: 'upload_photo'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block18)
+            currentX += blockSpacingX
+
+            // Блок 19: Задать вопрос
+            const block19 = {
+                id: blockIdCounter++,
+                label: 'Вопрос',
+                x: currentX,
+                y: currentY,
+                method: 'question',
+                methodData: {
+                    text: '❓ Какой у вас вопрос?\n\nОпишите вашу проблему или задайте вопрос, и мы постараемся помочь вам как можно скорее.',
+                    parse_mode: 'HTML'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block19)
+            currentX += blockSpacingX
+
+            // Блок 20: Чат с менеджером
+            const block20 = {
+                id: blockIdCounter++,
+                label: 'Менеджер',
+                x: currentX,
+                y: currentY,
+                method: 'managerChat',
+                methodData: {
+                    text: '💬 Переключение на менеджера...\n\nВаш запрос будет передан менеджеру. Ожидайте ответа в ближайшее время.',
+                    manager_chat_id: '123456789'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block20)
+            
+            // Переход на новую строку
+            currentX = 50
+            currentY += blockSpacingY
+
+            // Блок 21: Редактировать текст
+            // ВАЖНО: Для редактирования необходимо указать message_id из предыдущего блока
+            // Например, если предыдущий блок отправил сообщение с message_id: 214,
+            // укажите это значение здесь
+            const block21 = {
+                id: blockIdCounter++,
+                label: 'Редактировать',
+                x: currentX,
+                y: currentY,
+                method: 'editMessageText',
+                methodData: {
+                    message_id: null, // ВАЖНО: Укажите message_id из ответа предыдущего блока отправки сообщения
+                    text: '✏️ Обновленный текст сообщения\n\nЭто сообщение было отредактировано для демонстрации функционала редактирования.',
+                    parse_mode: 'HTML'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block21)
+            currentX += blockSpacingX
+
+            // Блок 22: Редактировать подпись
+            // ВАЖНО: Для редактирования необходимо указать message_id из предыдущего блока с медиа
+            const block22 = {
+                id: blockIdCounter++,
+                label: 'Редакт. подпись',
+                x: currentX,
+                y: currentY,
+                method: 'editMessageCaption',
+                methodData: {
+                    message_id: null, // ВАЖНО: Укажите message_id из ответа предыдущего блока отправки медиа (photo, video и т.д.)
+                    caption: '📝 Обновленная подпись к медиа\n\nПодпись была изменена.',
+                    parse_mode: 'HTML'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block22)
+            currentX += blockSpacingX
+
+            // Блок 23: Удалить сообщение
+            // ВАЖНО: Для удаления необходимо указать message_id из предыдущего блока
+            const block23 = {
+                id: blockIdCounter++,
+                label: 'Удалить',
+                x: currentX,
+                y: currentY,
+                method: 'deleteMessage',
+                methodData: {
+                    message_id: null // ВАЖНО: Укажите message_id из ответа предыдущего блока отправки сообщения
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block23)
+            currentX += blockSpacingX
+
+            // Блок 24: Закрепить сообщение
+            // ВАЖНО: Если message_id не указан, система автоматически использует последнее отправленное сообщение
+            const block24 = {
+                id: blockIdCounter++,
+                label: 'Закрепить',
+                x: currentX,
+                y: currentY,
+                method: 'pinChatMessage',
+                methodData: {
+                    message_id: null, // ВАЖНО: Если null, система автоматически использует последний message_id из кеша
+                    disable_notification: false
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block24)
+            currentX += blockSpacingX
+
+            // Блок 25: Открепить сообщение
+            // ВАЖНО: Для unpinChatMessage message_id необязателен (если не указан, открепляется последнее закрепленное сообщение)
+            const block25 = {
+                id: blockIdCounter++,
+                label: 'Открепить',
+                x: currentX,
+                y: currentY,
+                method: 'unpinChatMessage',
+                methodData: {
+                    message_id: null // ВАЖНО: Если null, открепляется последнее закрепленное сообщение
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block25)
+            
+            // Переход на новую строку
+            currentX = 50
+            currentY += blockSpacingY
+
+            // Блок 26: AI Ассистент
+            const block26 = {
+                id: blockIdCounter++,
+                label: 'AI Ассистент',
+                x: currentX,
+                y: currentY,
+                method: 'assistant',
+                methodData: {
+                    text: '🤖 Привет! Я AI ассистент.\n\nЗадайте мне любой вопрос, и я постараюсь помочь вам. Я могу отвечать на вопросы, давать советы и помогать с различными задачами.',
+                    model: 'gpt-3.5-turbo',
+                    temperature: 0.7,
+                    max_tokens: 1000
                 },
                 nextAction: 'end',
                 nextBlockId: null
             }
+            allBlocks.push(block26)
+            currentX += blockSpacingX
 
-            // Устанавливаем связи между блоками
-            block1.nextBlockId = block2.id
-            block2.nextBlockId = block3.id
-            block3.nextBlockId = block4.id
-            block4.nextBlockId = block5.id
+            // Блок 27: API Запрос
+            const block27 = {
+                id: blockIdCounter++,
+                label: 'API Запрос',
+                x: currentX,
+                y: currentY,
+                method: 'apiRequest',
+                methodData: {
+                    url: 'https://api.example.com/data', // Замените на реальный URL вашего API
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer token123' // Замените на реальный токен
+                    },
+                    body: JSON.stringify({ key: 'value' }),
+                    response_variable: 'api_response'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block27)
+            currentX += blockSpacingX
 
-            // Добавляем блоки в массив
-            blocks.value = [block1, block2, block3, block4, block5]
+            // Блок 28: API Кнопки
+            const block28 = {
+                id: blockIdCounter++,
+                label: 'API Кнопки',
+                x: currentX,
+                y: currentY,
+                method: 'apiButtons',
+                methodData: {
+                    url: 'https://api.example.com/buttons', // Замените на реальный URL вашего API
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    text: 'Выберите действие:',
+                    parse_mode: 'HTML'
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block28)
+            currentX += blockSpacingX
+
+            // Блок 29: API Группа медиа
+            const block29 = {
+                id: blockIdCounter++,
+                label: 'API Медиа',
+                x: currentX,
+                y: currentY,
+                method: 'apiMediaGroup',
+                methodData: {
+                    url: 'https://api.example.com/media', // Замените на реальный URL вашего API
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                },
+                nextAction: 'specific',
+                nextBlockId: null
+            }
+            allBlocks.push(block29)
+
+            // Устанавливаем связи между блоками (цепочка)
+            for (let i = 0; i < allBlocks.length - 1; i++) {
+                allBlocks[i].nextBlockId = allBlocks[i + 1].id
+            }
+
+            // Добавляем все блоки в массив
+            blocks.value = allBlocks
 
             // Добавляем команду
             commands.value.push({
@@ -798,6 +1302,7 @@ export default {
             handleBlockMove,
             handleBlockClick,
             handleBlockSettings,
+            handleBlockUpdate,
             handleBlockSave,
             handleBlockDelete,
             zoomIn,

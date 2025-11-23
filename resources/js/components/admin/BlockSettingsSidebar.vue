@@ -29,10 +29,22 @@
                     <option value="">Выберите метод</option>
                     <optgroup label="Отправка сообщений">
                         <option value="sendMessage">Отправить сообщение</option>
-                        <option value="sendDice">Отправить кубик</option>
-                        <option value="sendPoll">Отправить опрос</option>
-                        <option value="sendVenue">Отправить локацию</option>
-                        <option value="sendContact">Отправить контакт</option>
+                        <option value="sendDice">🎲 Отправить кубик</option>
+                        <option value="sendPoll">📊 Отправить опрос</option>
+                        <option value="sendVenue">📍 Отправить локацию</option>
+                        <option value="sendContact">👤 Отправить контакт</option>
+                    </optgroup>
+                    <optgroup label="Медиа">
+                        <option value="sendPhoto">📷 Фото</option>
+                        <option value="sendVideo">🎥 Видео</option>
+                        <option value="sendDocument">📄 Документ</option>
+                        <option value="sendAudio">🎵 Аудио</option>
+                        <option value="sendVoice">🎤 Голосовое</option>
+                        <option value="sendVideoNote">🎬 Видео-кружок</option>
+                        <option value="sendAnimation">🎞️ Анимация/GIF</option>
+                        <option value="sendSticker">😊 Стикер</option>
+                        <option value="sendLocation">📍 Локация</option>
+                        <option value="sendMediaGroup">🖼️ Группа медиа</option>
                     </optgroup>
                     <optgroup label="Редактирование">
                         <option value="editMessageText">Редактировать текст</option>
@@ -42,10 +54,19 @@
                         <option value="deleteMessage">Удалить сообщение</option>
                         <option value="pinChatMessage">Закрепить сообщение</option>
                         <option value="unpinChatMessage">Открепить сообщение</option>
+                        <option value="sendChatAction">⏳ Индикатор действия</option>
                     </optgroup>
                     <optgroup label="Кнопки">
-                        <option value="replyKeyboard">Клавиатура ответа</option>
-                        <option value="inlineKeyboard">Inline клавиатура</option>
+                        <option value="replyKeyboard">Reply-кнопки</option>
+                        <option value="inlineKeyboard">Inline кнопки</option>
+                    </optgroup>
+                    <optgroup label="Специальные функции">
+                        <option value="question">Задать вопрос</option>
+                        <option value="managerChat">💬 Чат с менеджером</option>
+                        <option value="apiRequest">🌐 API Запрос</option>
+                        <option value="apiButtons">🔘 API Кнопки</option>
+                        <option value="apiMediaGroup">🖼️ API Группа медиа</option>
+                        <option value="assistant">🤖 AI Ассистент (ChatGPT)</option>
                     </optgroup>
                 </select>
             </div>
@@ -461,6 +482,243 @@
                 </div>
             </div>
 
+            <!-- Поля для медиа методов -->
+            <div v-if="['sendPhoto', 'sendVideo', 'sendDocument', 'sendAudio', 'sendVoice', 'sendVideoNote', 'sendAnimation', 'sendSticker'].includes(localBlock.method)" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">Параметры медиа</h4>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">
+                        Файл <span class="text-destructive">*</span>
+                    </label>
+                    <FilePickerButton
+                        v-if="localBlock.method === 'sendPhoto'"
+                        v-model="methodData.photo"
+                        :count-file="1"
+                        path="webp"
+                    />
+                    <FilePickerButton
+                        v-else-if="localBlock.method === 'sendVideo'"
+                        v-model="methodData.video"
+                        :count-file="1"
+                        path="webp"
+                    />
+                    <FilePickerButton
+                        v-else-if="localBlock.method === 'sendDocument'"
+                        v-model="methodData.document"
+                        :count-file="1"
+                        path="url"
+                    />
+                    <FilePickerButton
+                        v-else-if="localBlock.method === 'sendAudio'"
+                        v-model="methodData.audio"
+                        :count-file="1"
+                        path="url"
+                    />
+                    <FilePickerButton
+                        v-else-if="localBlock.method === 'sendVoice'"
+                        v-model="methodData.voice"
+                        :count-file="1"
+                        path="url"
+                    />
+                    <FilePickerButton
+                        v-else-if="localBlock.method === 'sendVideoNote'"
+                        v-model="methodData.video_note"
+                        :count-file="1"
+                        path="webp"
+                    />
+                    <FilePickerButton
+                        v-else-if="localBlock.method === 'sendAnimation'"
+                        v-model="methodData.animation"
+                        :count-file="1"
+                        path="webp"
+                    />
+                    <FilePickerButton
+                        v-else-if="localBlock.method === 'sendSticker'"
+                        v-model="methodData.sticker"
+                        :count-file="1"
+                        path="webp"
+                    />
+                    <p v-if="getMediaFileValue()" class="text-xs text-muted-foreground mt-2">
+                        Выбран: {{ getMediaFileValue() }}
+                    </p>
+                </div>
+                <div v-if="['sendPhoto', 'sendVideo', 'sendDocument', 'sendAudio', 'sendVoice', 'sendAnimation'].includes(localBlock.method)">
+                    <label class="text-sm font-medium mb-1 block">Подпись</label>
+                    <textarea
+                        v-model="methodData.caption"
+                        rows="3"
+                        class="w-full px-3 py-2 border rounded bg-background"
+                        placeholder="Подпись к медиа (до 1024 символов)"
+                    ></textarea>
+                </div>
+                <div v-if="['sendPhoto', 'sendVideo', 'sendDocument', 'sendAudio', 'sendVoice', 'sendAnimation'].includes(localBlock.method)">
+                    <label class="text-sm font-medium mb-1 block">Режим парсинга</label>
+                    <select
+                        v-model="methodData.parse_mode"
+                        class="w-full h-10 px-3 border border-border rounded bg-background"
+                    >
+                        <option value="">Нет</option>
+                        <option value="HTML">HTML</option>
+                        <option value="Markdown">Markdown</option>
+                        <option value="MarkdownV2">MarkdownV2</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Поля для sendLocation -->
+            <div v-if="localBlock.method === 'sendLocation'" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">Параметры локации</h4>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-sm font-medium mb-1 block">Широта <span class="text-destructive">*</span></label>
+                        <input
+                            v-model="methodData.latitude"
+                            type="number"
+                            step="any"
+                            class="w-full h-10 px-3 border rounded bg-background"
+                            placeholder="-90 до 90"
+                        />
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium mb-1 block">Долгота <span class="text-destructive">*</span></label>
+                        <input
+                            v-model="methodData.longitude"
+                            type="number"
+                            step="any"
+                            class="w-full h-10 px-3 border rounded bg-background"
+                            placeholder="-180 до 180"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Поля для sendMediaGroup -->
+            <div v-if="localBlock.method === 'sendMediaGroup'" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">Группа медиа</h4>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">Медиа файлы</label>
+                    <div class="space-y-2">
+                        <div
+                            v-for="(item, index) in methodData.media"
+                            :key="index"
+                            class="border border-border rounded p-3 space-y-2"
+                        >
+                            <input
+                                v-model="methodData.media[index].media"
+                                type="text"
+                                class="w-full h-10 px-3 border rounded bg-background"
+                                placeholder="URL файла или file_id"
+                            />
+                            <input
+                                v-model="methodData.media[index].caption"
+                                type="text"
+                                class="w-full h-10 px-3 border rounded bg-background"
+                                placeholder="Подпись (опционально)"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Поля для sendChatAction -->
+            <div v-if="localBlock.method === 'sendChatAction'" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">Индикатор действия</h4>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">Действие</label>
+                    <select
+                        v-model="methodData.action"
+                        class="w-full h-10 px-3 border border-border rounded bg-background"
+                    >
+                        <option value="typing">Печатает</option>
+                        <option value="upload_photo">Загружает фото</option>
+                        <option value="record_video">Записывает видео</option>
+                        <option value="upload_video">Загружает видео</option>
+                        <option value="record_voice">Записывает голос</option>
+                        <option value="upload_voice">Загружает голос</option>
+                        <option value="upload_document">Загружает документ</option>
+                        <option value="choose_sticker">Выбирает стикер</option>
+                        <option value="find_location">Ищет локацию</option>
+                        <option value="record_video_note">Записывает видео-кружок</option>
+                        <option value="upload_video_note">Загружает видео-кружок</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Поля для question -->
+            <div v-if="localBlock.method === 'question'" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">Задать вопрос</h4>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">Текст вопроса <span class="text-destructive">*</span></label>
+                    <textarea
+                        v-model="methodData.text"
+                        rows="4"
+                        class="w-full px-3 py-2 border rounded bg-background"
+                        placeholder="Введите вопрос"
+                    ></textarea>
+                </div>
+            </div>
+
+            <!-- Поля для managerChat -->
+            <div v-if="localBlock.method === 'managerChat'" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">Чат с менеджером</h4>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">ID чата менеджера</label>
+                    <input
+                        v-model="methodData.manager_chat_id"
+                        type="text"
+                        class="w-full h-10 px-3 border rounded bg-background"
+                        placeholder="ID чата менеджера"
+                    />
+                </div>
+            </div>
+
+            <!-- Поля для apiRequest -->
+            <div v-if="localBlock.method === 'apiRequest'" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">API Запрос</h4>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">Метод API</label>
+                    <input
+                        v-model="methodData.method"
+                        type="text"
+                        class="w-full h-10 px-3 border rounded bg-background"
+                        placeholder="Название метода API"
+                    />
+                </div>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">Параметры (JSON)</label>
+                    <textarea
+                        v-model="methodData.params"
+                        rows="4"
+                        class="w-full px-3 py-2 border rounded bg-background font-mono text-xs"
+                        placeholder='{"key": "value"}'
+                    ></textarea>
+                </div>
+            </div>
+
+            <!-- Поля для assistant -->
+            <div v-if="localBlock.method === 'assistant'" class="space-y-4 border-t border-border pt-4">
+                <h4 class="text-sm font-semibold text-foreground">AI Ассистент</h4>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">Запрос <span class="text-destructive">*</span></label>
+                    <textarea
+                        v-model="methodData.text"
+                        rows="4"
+                        class="w-full px-3 py-2 border rounded bg-background"
+                        placeholder="Введите запрос для AI"
+                    ></textarea>
+                </div>
+                <div>
+                    <label class="text-sm font-medium mb-1 block">Модель</label>
+                    <select
+                        v-model="methodData.model"
+                        class="w-full h-10 px-3 border border-border rounded bg-background"
+                    >
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                        <option value="gpt-4">GPT-4</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                    </select>
+                </div>
+            </div>
+
             <!-- Поля для других методов -->
             <div v-if="['editMessageText', 'editMessageCaption', 'deleteMessage', 'pinChatMessage'].includes(localBlock.method)" class="space-y-4 border-t border-border pt-4">
                 <h4 class="text-sm font-semibold text-foreground">Параметры метода</h4>
@@ -565,9 +823,13 @@
 <script>
 import { ref, watch, computed } from 'vue'
 import { validateMethodData, telegramApiValidation } from '../../utils/telegramApiValidation.js'
+import FilePickerButton from './FilePickerButton.vue'
 
 export default {
     name: 'BlockSettingsSidebar',
+    components: {
+        FilePickerButton
+    },
     props: {
         show: {
             type: Boolean,
@@ -582,7 +844,7 @@ export default {
             default: () => []
         }
     },
-    emits: ['close', 'save'],
+    emits: ['close', 'save', 'update'],
     setup(props, { emit }) {
         const localBlock = ref({
             method: '',
@@ -620,6 +882,68 @@ export default {
                     first_name: '',
                     last_name: ''
                 },
+                sendPhoto: {
+                    photo: null,
+                    caption: '',
+                    parse_mode: ''
+                },
+                sendVideo: {
+                    video: null,
+                    caption: '',
+                    parse_mode: '',
+                    duration: '',
+                    width: '',
+                    height: ''
+                },
+                sendDocument: {
+                    document: null,
+                    caption: '',
+                    parse_mode: ''
+                },
+                sendAudio: {
+                    audio: null,
+                    caption: '',
+                    parse_mode: '',
+                    duration: '',
+                    performer: '',
+                    title: ''
+                },
+                sendVoice: {
+                    voice: null,
+                    caption: '',
+                    parse_mode: '',
+                    duration: ''
+                },
+                sendVideoNote: {
+                    video_note: null,
+                    duration: '',
+                    length: ''
+                },
+                sendAnimation: {
+                    animation: null,
+                    caption: '',
+                    parse_mode: '',
+                    duration: '',
+                    width: '',
+                    height: ''
+                },
+                sendSticker: {
+                    sticker: null
+                },
+                sendLocation: {
+                    latitude: '',
+                    longitude: '',
+                    horizontal_accuracy: '',
+                    live_period: '',
+                    heading: '',
+                    proximity_alert_radius: ''
+                },
+                sendMediaGroup: {
+                    media: [{ type: 'photo', media: '', caption: '' }]
+                },
+                sendChatAction: {
+                    action: 'typing'
+                },
                 replyKeyboard: {
                     keyboard: [[{ text: '' }]],
                     resize_keyboard: false,
@@ -642,6 +966,31 @@ export default {
                 pinChatMessage: {
                     message_id: '',
                     disable_notification: false
+                },
+                question: {
+                    text: '',
+                    parse_mode: ''
+                },
+                managerChat: {
+                    text: 'Переключение на менеджера...',
+                    manager_chat_id: ''
+                },
+                apiRequest: {
+                    method: '',
+                    params: {}
+                },
+                apiButtons: {
+                    text: '',
+                    buttons: []
+                },
+                apiMediaGroup: {
+                    media: []
+                },
+                assistant: {
+                    text: '',
+                    model: 'gpt-3.5-turbo',
+                    temperature: 0.7,
+                    max_tokens: 1000
                 }
             }
             return defaults[method] || {}
@@ -673,6 +1022,12 @@ export default {
                     methodData.value = initMethodData(newMethod)
                 }
                 errors.value = {}
+                // Эмитим обновление блока в реальном времени
+                emit('update', {
+                    ...props.selectedBlock,
+                    ...localBlock.value,
+                    methodData: { ...methodData.value }
+                })
             }
         })
 
@@ -772,6 +1127,12 @@ export default {
         const handleMethodChange = () => {
             methodData.value = initMethodData(localBlock.value.method)
             errors.value = {}
+            // Эмитим обновление блока в реальном времени
+            emit('update', {
+                ...props.selectedBlock,
+                ...localBlock.value,
+                methodData: { ...methodData.value }
+            })
         }
 
         const handleSave = () => {
@@ -788,6 +1149,36 @@ export default {
                 methodData: { ...methodData.value }
             })
             emit('close')
+        }
+
+        const getMediaFileValue = () => {
+            const method = localBlock.value.method
+            if (!method) return null
+            
+            const fieldMap = {
+                'sendPhoto': 'photo',
+                'sendVideo': 'video',
+                'sendDocument': 'document',
+                'sendAudio': 'audio',
+                'sendVoice': 'voice',
+                'sendVideoNote': 'video_note',
+                'sendAnimation': 'animation',
+                'sendSticker': 'sticker'
+            }
+            
+            const field = fieldMap[method]
+            if (!field) return null
+            
+            const value = methodData.value[field]
+            if (!value) return null
+            
+            // Если это строка (URL), возвращаем её
+            if (typeof value === 'string') {
+                return value
+            }
+            
+            // Если это объект, возвращаем его строковое представление
+            return JSON.stringify(value)
         }
 
         return {
@@ -810,7 +1201,8 @@ export default {
             addInlineKeyboardButton,
             removeInlineKeyboardButton,
             handleMethodChange,
-            handleSave
+            handleSave,
+            getMediaFileValue
         }
     }
 }
