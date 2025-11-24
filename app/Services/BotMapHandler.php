@@ -95,16 +95,35 @@ class BotMapHandler
         // Получаем или создаем сессию
         $session = $this->sessionService->getOrCreateSession($bot, (string)$chatId, $userData);
 
+        // Обновляем активность сессии
+        $session->touchActivity();
+
         // Проверяем, находится ли сессия в режиме чата с менеджером
+        // Обновляем сессию из БД, чтобы получить актуальный статус
+        $session->refresh();
+        
         if ($session->status === 'manager_chat') {
+            Log::info('Session is in manager_chat mode', [
+                'session_id' => $session->id,
+                'chat_id' => $chatId,
+                'status' => $session->status,
+            ]);
+            
             // Команды обрабатываются отдельно, даже в режиме менеджера
             if ($text && str_starts_with($text, '/')) {
                 // Обрабатываем команду выхода из режима менеджера
                 if (in_array($text, ['/exit', '/back', '/menu'])) {
+                    // Загружаем блоки для exitManagerChat
+                    $blocks = $bot->blocks ?? [];
+                    if (!empty($blocks)) {
+                        $blocks = $this->ensureDefaultCommands($bot, $blocks);
+                    }
                     $this->exitManagerChat($bot, $session, $blocks);
                     return;
                 }
             }
+            
+            // Обрабатываем сообщение в режиме чата с менеджером
             $this->handleManagerChatMessage($bot, $session, $message);
             return;
         }
@@ -406,6 +425,18 @@ class BotMapHandler
         // Выполняем блок команды
         $this->executeBlock($bot, $session, $commandBlock, $blocks, $step);
 
+        // Обновляем сессию из БД, чтобы получить актуальный статус
+        $session->refresh();
+
+        // Если команда переключила сессию в режим manager_chat, не переходим к следующему блоку
+        if ($session->status === 'manager_chat') {
+            Log::info('Command switched to manager_chat mode, skipping next block', [
+                'session_id' => $session->id,
+                'command' => $command,
+            ]);
+            return;
+        }
+
         // После выполнения команды переходим к следующему блоку, если указан
         $nextBlockId = $commandBlock['nextBlockId'] ?? null;
         if ($nextBlockId) {
@@ -669,8 +700,21 @@ class BotMapHandler
 
                 case 'managerChat':
                     $botResponse = $methodData['text'] ?? 'Переключение на менеджера...';
-                    $session->update(['status' => 'manager_chat']);
+                    // Обновляем статус сессии и активность
+                    $session->update([
+                        'status' => 'manager_chat',
+                        'last_activity_at' => now(),
+                    ]);
+                    // Обновляем сессию в памяти
+                    $session->refresh();
                     $result = $telegraph->message($botResponse)->send();
+                    
+                    Log::info('Switched session to manager_chat mode', [
+                        'session_id' => $session->id,
+                        'bot_id' => $bot->id,
+                        'chat_id' => $session->chat_id,
+                        'status' => $session->status,
+                    ]);
                     
                     // Отправляем уведомления всем менеджерам бота
                     $this->notifyManagers($bot, $session, $methodData);
@@ -929,6 +973,9 @@ class BotMapHandler
             'has_venue' => !empty($venue),
         ]);
 
+        // Обновляем активность сессии
+        $session->touchActivity();
+        
         // Проверяем, является ли отправитель менеджером
         $isManager = BotUser::where('bot_id', $bot->id)
             ->where('telegram_user_id', $telegramUserId)
