@@ -695,6 +695,8 @@ class BotMapHandler
             'has_methodData' => isset($block['methodData']),
             'method_data_keys' => array_keys($methodData),
             'text_length' => strlen($methodData['text'] ?? ''),
+            'document_path' => $methodData['document'] ?? null,
+            'document_type' => isset($methodData['document']) ? gettype($methodData['document']) : null,
         ]);
 
         if (!$method) {
@@ -767,10 +769,51 @@ class BotMapHandler
                 case 'sendDocument':
                     $documentPath = $methodData['document'] ?? '';
                     $caption = $methodData['caption'] ?? null;
-                    $result = $telegraph->document($documentPath)
-                        ->caption($caption)
-                        ->send();
-                    $botResponse = $caption ?? 'Документ отправлен';
+                    
+                    if (empty($documentPath)) {
+                        Log::error('Document path is empty', [
+                            'session_id' => $session->id,
+                            'block_id' => $block['id'] ?? null,
+                        ]);
+                        throw new \Exception('Путь к документу не указан');
+                    }
+                    
+                    // Логируем информацию о документе
+                    $isUrl = filter_var($documentPath, FILTER_VALIDATE_URL);
+                    $isLocalFile = !$isUrl && (
+                        file_exists($documentPath) ||
+                        file_exists(public_path($documentPath)) ||
+                        file_exists(storage_path($documentPath))
+                    );
+                    
+                    Log::info('Sending document', [
+                        'session_id' => $session->id,
+                        'block_id' => $block['id'] ?? null,
+                        'document_path' => $documentPath,
+                        'is_url' => $isUrl,
+                        'is_local_file' => $isLocalFile,
+                        'file_exists' => file_exists($documentPath) || file_exists(public_path($documentPath)) || file_exists(storage_path($documentPath)),
+                    ]);
+                    
+                    try {
+                        $result = $telegraph->document($documentPath)
+                            ->caption($caption)
+                            ->send();
+                        $botResponse = $caption ?? 'Документ отправлен';
+                    } catch (\Exception $e) {
+                        Log::error('Failed to send document', [
+                            'session_id' => $session->id,
+                            'block_id' => $block['id'] ?? null,
+                            'document_path' => $documentPath,
+                            'error' => $e->getMessage(),
+                        ]);
+                        
+                        // Отправляем сообщение об ошибке пользователю
+                        $errorMessage = 'Не удалось отправить документ. Пожалуйста, проверьте настройки блока.';
+                        $telegraph->message($errorMessage)->send();
+                        $botResponse = $errorMessage;
+                        throw $e;
+                    }
                     break;
 
                 case 'managerChat':

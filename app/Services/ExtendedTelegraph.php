@@ -250,13 +250,68 @@ class ExtendedTelegraph extends Telegraph
                             if ($value instanceof \Illuminate\Http\File || $value instanceof \Illuminate\Http\UploadedFile) {
                                 $files[$field] = $value;
                                 unset($data[$field]);
-                            } elseif (is_string($value) && str_starts_with($value, '/upload/')) {
-                                $fullPath = public_path($value);
-                                if (file_exists($fullPath)) {
+                            } elseif (is_string($value)) {
+                                // Проверяем, является ли это URL
+                                if (filter_var($value, FILTER_VALIDATE_URL)) {
+                                    // Это URL, проверяем его доступность и тип контента
+                                    try {
+                                        $headers = @get_headers($value, 1);
+                                        if ($headers && strpos($headers[0], '200') !== false) {
+                                            $contentType = $headers['Content-Type'] ?? $headers['content-type'] ?? '';
+                                            // Проверяем, что это не HTML страница
+                                            if (is_array($contentType)) {
+                                                $contentType = end($contentType);
+                                            }
+                                            if (strpos(strtolower($contentType), 'text/html') !== false) {
+                                                \Log::warning('URL returns HTML instead of file', [
+                                                    'url' => $value,
+                                                    'content_type' => $contentType,
+                                                    'field' => $field,
+                                                ]);
+                                            }
+                                        } else {
+                                            \Log::warning('URL is not accessible', [
+                                                'url' => $value,
+                                                'headers' => $headers,
+                                                'field' => $field,
+                                            ]);
+                                        }
+                                    } catch (\Exception $e) {
+                                        \Log::warning('Failed to check URL headers', [
+                                            'url' => $value,
+                                            'error' => $e->getMessage(),
+                                            'field' => $field,
+                                        ]);
+                                    }
+                                    // Это URL, оставляем как есть
+                                    $data[$field] = $value;
+                                } elseif (str_starts_with($value, '/upload/') || str_starts_with($value, '/storage/')) {
+                                    // Путь относительно public
+                                    $fullPath = public_path($value);
+                                    if (file_exists($fullPath)) {
+                                        $files[$field] = new \Illuminate\Http\File($fullPath);
+                                        unset($data[$field]);
+                                    } else {
+                                        // Если файл не найден, пробуем как URL
+                                        $data[$field] = url($value);
+                                    }
+                                } elseif (file_exists($value)) {
+                                    // Абсолютный путь к файлу
+                                    $files[$field] = new \Illuminate\Http\File($value);
+                                    unset($data[$field]);
+                                } elseif (file_exists(public_path($value))) {
+                                    // Относительный путь от public
+                                    $fullPath = public_path($value);
+                                    $files[$field] = new \Illuminate\Http\File($fullPath);
+                                    unset($data[$field]);
+                                } elseif (file_exists(storage_path($value))) {
+                                    // Относительный путь от storage
+                                    $fullPath = storage_path($value);
                                     $files[$field] = new \Illuminate\Http\File($fullPath);
                                     unset($data[$field]);
                                 } else {
-                                    $data[$field] = url($value);
+                                    // Если файл не найден, пробуем как URL
+                                    $data[$field] = $value;
                                 }
                             }
                         }
