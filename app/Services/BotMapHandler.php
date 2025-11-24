@@ -272,39 +272,65 @@ class BotMapHandler
             // в текущем блоке (например, выбор ОПФ)
             $currentBlock = $this->getCurrentBlock($session, $blocks);
             
-            if ($currentBlock && ($currentBlock['method'] === 'inlineKeyboard' || $currentBlock['method'] === 'question')) {
-                Log::info('Callback_data is a value to save, not a block ID', [
-                    'bot_id' => $bot->id,
-                    'callback_data' => $callbackData,
-                    'current_block_id' => $currentBlock['id'] ?? null,
-                    'current_block_method' => $currentBlock['method'] ?? null,
-                ]);
-
-                // Проверяем, что кнопка с таким callback_data существует в текущем блоке
-                $methodData = $currentBlock['methodData'] ?? $currentBlock['method_data'] ?? [];
-                $inlineKeyboard = $methodData['inline_keyboard'] ?? [];
-                $buttonFound = false;
-                
-                foreach ($inlineKeyboard as $row) {
-                    foreach ($row as $button) {
-                        if (($button['callback_data'] ?? null) === $callbackData) {
-                            $buttonFound = true;
-                            break 2;
-                        }
-                    }
-                }
-
-                if ($buttonFound) {
-                    // Проверяем, есть ли у кнопки target_block_id
-                    $targetBlockId = null;
+            // Ищем кнопку с таким callback_data во всех блоках с inlineKeyboard
+            $buttonBlock = null;
+            $targetBlockId = null;
+            
+            foreach ($blocks as $block) {
+                if (($block['method'] ?? null) === 'inlineKeyboard' || ($block['method'] ?? null) === 'question') {
+                    $methodData = $block['methodData'] ?? $block['method_data'] ?? [];
+                    $inlineKeyboard = $methodData['inline_keyboard'] ?? [];
+                    
                     foreach ($inlineKeyboard as $row) {
                         foreach ($row as $button) {
                             if (($button['callback_data'] ?? null) === $callbackData) {
+                                $buttonBlock = $block;
                                 $targetBlockId = $button['target_block_id'] ?? null;
+                                break 3;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Если кнопка найдена в каком-то блоке
+            if ($buttonBlock) {
+                Log::info('Button found in block, processing callback', [
+                    'bot_id' => $bot->id,
+                    'callback_data' => $callbackData,
+                    'button_block_id' => $buttonBlock['id'] ?? null,
+                    'button_block_method' => $buttonBlock['method'] ?? null,
+                    'current_block_id' => $currentBlock['id'] ?? null,
+                    'target_block_id' => $targetBlockId,
+                ]);
+                
+                // Используем блок, где найдена кнопка, как текущий
+                $currentBlock = $buttonBlock;
+                
+                if ($currentBlock && ($currentBlock['method'] === 'inlineKeyboard' || $currentBlock['method'] === 'question')) {
+                    Log::info('Callback_data is a value to save, not a block ID', [
+                        'bot_id' => $bot->id,
+                        'callback_data' => $callbackData,
+                        'current_block_id' => $currentBlock['id'] ?? null,
+                        'current_block_method' => $currentBlock['method'] ?? null,
+                    ]);
+
+                    // Проверяем, что кнопка с таким callback_data существует в текущем блоке
+                    $methodData = $currentBlock['methodData'] ?? $currentBlock['method_data'] ?? [];
+                    $inlineKeyboard = $methodData['inline_keyboard'] ?? [];
+                    $buttonFound = false;
+                    
+                    foreach ($inlineKeyboard as $row) {
+                        foreach ($row as $button) {
+                            if (($button['callback_data'] ?? null) === $callbackData) {
+                                $buttonFound = true;
                                 break 2;
                             }
                         }
                     }
+
+                    if ($buttonFound) {
+                    // target_block_id уже найден выше при поиске кнопки
 
                     // Сохраняем callback_data как данные сессии
                     $dataKey = $currentBlock['data_key'] ?? strtolower(str_replace([' ', '-'], '_', $currentBlock['label'] ?? 'answer'));
