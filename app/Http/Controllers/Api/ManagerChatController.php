@@ -370,23 +370,65 @@ class ManagerChatController extends Controller
                     ]);
                     
                     if ($fileContent->successful()) {
-                        // Определяем Content-Type на основе расширения файла
-                        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
-                        $contentTypeMap = [
-                            'jpg' => 'image/jpeg',
-                            'jpeg' => 'image/jpeg',
-                            'png' => 'image/png',
-                            'gif' => 'image/gif',
-                            'webp' => 'image/webp',
-                            'mp4' => 'video/mp4',
-                            'mp3' => 'audio/mpeg',
-                            'ogg' => 'audio/ogg',
-                            'oga' => 'audio/ogg',
-                            'pdf' => 'application/pdf',
-                            'zip' => 'application/zip',
-                            'm4a' => 'audio/mp4',
-                        ];
-                        $contentType = $contentTypeMap[strtolower($extension)] ?? $fileContent->header('Content-Type') ?? 'application/octet-stream';
+                        $body = $fileContent->body();
+                        $bodySize = strlen($body);
+                        
+                        // Определяем Content-Type на основе расширения файла и magic bytes
+                        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+                        
+                        // Проверяем magic bytes для более точного определения типа
+                        $magicBytes = substr($body, 0, 12);
+                        $contentType = null;
+                        
+                        // Определение по magic bytes (приоритет)
+                        if (str_starts_with($magicBytes, "\xFF\xD8\xFF")) {
+                            $contentType = 'image/jpeg';
+                        } elseif (str_starts_with($magicBytes, "\x89PNG\r\n\x1A\n")) {
+                            $contentType = 'image/png';
+                        } elseif (str_starts_with($magicBytes, "GIF87a") || str_starts_with($magicBytes, "GIF89a")) {
+                            $contentType = 'image/gif';
+                        } elseif (str_starts_with($magicBytes, "RIFF") && strpos($magicBytes, "WEBP") !== false) {
+                            $contentType = 'image/webp';
+                        } elseif (str_starts_with($magicBytes, "\x1A\x45\xDF\xA3")) {
+                            // Matroska (webm, mkv)
+                            $contentType = 'video/webm';
+                        } elseif (str_starts_with($magicBytes, "\x00\x00\x00 ftyp")) {
+                            // MP4 (ftyp)
+                            $contentType = 'video/mp4';
+                        } elseif (str_starts_with($magicBytes, "ID3") || str_starts_with($magicBytes, "\xFF\xFB") || str_starts_with($magicBytes, "\xFF\xF3")) {
+                            $contentType = 'audio/mpeg';
+                        } elseif (str_starts_with($magicBytes, "OggS")) {
+                            $contentType = 'audio/ogg';
+                        } elseif (str_starts_with($magicBytes, "%PDF")) {
+                            $contentType = 'application/pdf';
+                        } elseif (str_starts_with($magicBytes, "PK\x03\x04")) {
+                            $contentType = 'application/zip';
+                        }
+                        
+                        // Если не определили по magic bytes, используем расширение
+                        if (!$contentType) {
+                            $contentTypeMap = [
+                                'jpg' => 'image/jpeg',
+                                'jpeg' => 'image/jpeg',
+                                'png' => 'image/png',
+                                'gif' => 'image/gif',
+                                'webp' => 'image/webp',
+                                'mp4' => 'video/mp4',
+                                'webm' => 'video/webm',
+                                'mp3' => 'audio/mpeg',
+                                'ogg' => 'audio/ogg',
+                                'oga' => 'audio/ogg',
+                                'pdf' => 'application/pdf',
+                                'zip' => 'application/zip',
+                                'm4a' => 'audio/mp4',
+                            ];
+                            $contentType = $contentTypeMap[$extension] ?? null;
+                        }
+                        
+                        // Если все еще не определили, используем заголовок от Telegram или по умолчанию
+                        if (!$contentType) {
+                            $contentType = $fileContent->header('Content-Type') ?? 'application/octet-stream';
+                        }
                         
                         $body = $fileContent->body();
                         $bodySize = strlen($body);
@@ -394,8 +436,10 @@ class ManagerChatController extends Controller
                         \Log::info('getFile: file fetched successfully, returning response', [
                             'file_id' => $fileId,
                             'file_path' => $filePath,
+                            'extension' => $extension,
                             'content_type' => $contentType,
                             'size' => $bodySize,
+                            'magic_bytes_hex' => bin2hex(substr($body, 0, 12)),
                             'first_bytes' => substr($body, 0, 20),
                         ]);
                         
