@@ -140,15 +140,10 @@ class ExtendedTelegraph extends Telegraph
         // Устанавливаем HTML парсинг по умолчанию, если не указан другой режим
         if (!isset($data['parse_mode']) && isset($data['text'])) {
             $data['parse_mode'] = 'HTML';
-            // Конвертируем буквальные \n (обратный слэш + n) в реальные переносы строк
-            // В HTML-режиме Telegram автоматически обрабатывает переносы строк (\n)
-            $data['text'] = str_replace('\\n', "\n", $data['text']);
-        } elseif (isset($data['parse_mode']) && $data['parse_mode'] === 'HTML' && isset($data['text'])) {
-            // Если уже установлен HTML режим, конвертируем буквальные \n в реальные переносы строк
-            // В HTML-режиме Telegram автоматически обрабатывает переносы строк (\n)
-            $data['text'] = str_replace('\\n', "\n", $data['text']);
-        } elseif (isset($data['text'])) {
-            // Для других режимов парсинга тоже конвертируем буквальные \n в реальные переносы строк
+        }
+        
+        // Конвертируем буквальные \n (обратный слэш + n) в реальные переносы строк для всех режимов
+        if (isset($data['text'])) {
             $data['text'] = str_replace('\\n', "\n", $data['text']);
         }
         

@@ -241,8 +241,10 @@ class BotController extends Controller
 
             switch ($method) {
                 case 'sendMessage':
+                    // Используем HTML парсинг по умолчанию, если не указан другой режим
+                    $parseMode = $methodData['parse_mode'] ?? 'HTML';
                     $result = $telegraph->message($methodData['text'] ?? '')
-                        ->parseMode($methodData['parse_mode'] ?? null)
+                        ->parseMode($parseMode)
                         ->send();
                     break;
 
@@ -318,7 +320,10 @@ class BotController extends Controller
                         $inlineKeyboard[] = $inlineRow;
                         }
                     }
+                    // Используем HTML парсинг по умолчанию для inlineKeyboard
+                    $parseMode = $methodData['parse_mode'] ?? 'HTML';
                     $result = $telegraph->message($methodData['text'] ?? 'Выберите действие:')
+                        ->parseMode($parseMode)
                         ->inlineKeyboard($inlineKeyboard)
                         ->send();
                     break;
@@ -651,8 +656,10 @@ class BotController extends Controller
 
                 case 'question':
                     // Вопрос - это просто сообщение
+                    // Используем HTML парсинг по умолчанию, если не указан другой режим
+                    $parseMode = $methodData['parse_mode'] ?? 'HTML';
                     $result = $telegraph->message($methodData['text'] ?? '')
-                        ->parseMode($methodData['parse_mode'] ?? null)
+                        ->parseMode($parseMode)
                         ->send();
                     break;
 
