@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\BotController;
 use App\Http\Controllers\Api\BotSessionController;
+use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\v1\FolderController;
 use App\Http\Controllers\Api\v1\MediaController;
@@ -75,6 +76,15 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('bot-sessions', [BotSessionController::class, 'index']);
             Route::get('bot-sessions/statistics', [BotSessionController::class, 'statistics']);
             Route::get('bot-sessions/{id}', [BotSessionController::class, 'show']);
+
+            // Settings
+            Route::get('settings', [SettingsController::class, 'index']);
+            Route::get('settings/group/{group}', [SettingsController::class, 'getGroup']);
+            Route::get('settings/key/{key}', [SettingsController::class, 'getByKey']);
+            Route::post('settings', [SettingsController::class, 'store']);
+            Route::post('settings/bulk-update', [SettingsController::class, 'bulkUpdate']);
+            Route::put('settings/{id}', [SettingsController::class, 'update']);
+            Route::delete('settings/{id}', [SettingsController::class, 'destroy']);
         });
     });
 });
