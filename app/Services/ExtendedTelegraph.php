@@ -137,6 +137,16 @@ class ExtendedTelegraph extends Telegraph
             $data['text'] = $this->message;
         }
         
+        // Устанавливаем HTML парсинг по умолчанию, если не указан другой режим
+        if (!isset($data['parse_mode']) && isset($data['text'])) {
+            $data['parse_mode'] = 'HTML';
+            // Конвертируем \n в <br> для HTML парсинга
+            $data['text'] = str_replace("\n", "<br>", $data['text']);
+        } elseif (isset($data['parse_mode']) && $data['parse_mode'] === 'HTML' && isset($data['text'])) {
+            // Если уже установлен HTML режим, конвертируем \n в <br>
+            $data['text'] = str_replace("\n", "<br>", $data['text']);
+        }
+        
         // Добавляем chat_id если он установлен через chat() метод
         if (!isset($data['chat_id']) && isset($this->chat)) {
             // Если $this->chat является объектом модели, получаем chat_id из него
@@ -379,6 +389,7 @@ class ExtendedTelegraph extends Telegraph
         
         if (!isset($this->data)) {
             $this->data = [];
+        }
         }
         $this->data['text'] = $message;
         

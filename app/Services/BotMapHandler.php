@@ -688,8 +688,10 @@ class BotMapHandler
             switch ($method) {
                 case 'sendMessage':
                     $botResponse = $methodData['text'] ?? '';
+                    // Используем HTML парсинг по умолчанию, если не указан другой режим
+                    $parseMode = $methodData['parse_mode'] ?? 'HTML';
                     $result = $telegraph->message($botResponse)
-                        ->parseMode($methodData['parse_mode'] ?? null)
+                        ->parseMode($parseMode)
                         ->send();
                     break;
 
@@ -718,15 +720,20 @@ class BotMapHandler
                         'keyboard_structure' => json_encode($inlineKeyboard),
                     ]);
                     
+                    // Используем HTML парсинг по умолчанию для inlineKeyboard
+                    $parseMode = $methodData['parse_mode'] ?? 'HTML';
                     $result = $telegraph->message($botResponse)
+                        ->parseMode($parseMode)
                         ->inlineKeyboard($inlineKeyboard)
                         ->send();
                     break;
 
                 case 'question':
                     $botResponse = $methodData['text'] ?? '';
+                    // Используем HTML парсинг по умолчанию, если не указан другой режим
+                    $parseMode = $methodData['parse_mode'] ?? 'HTML';
                     $result = $telegraph->message($botResponse)
-                        ->parseMode($methodData['parse_mode'] ?? null)
+                        ->parseMode($parseMode)
                         ->send();
                     break;
 
