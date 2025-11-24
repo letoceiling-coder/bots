@@ -33,6 +33,11 @@ Route::match(['GET', 'POST'], '/telegram/webhook/{bot_id}', [TelegramWebhookCont
     ->name('telegram.webhook')
     ->middleware('throttle:60,1');
 
+// Публичный маршрут для получения файлов из Telegram (прокси)
+// Используется для отображения медиа в диалогах менеджеров
+Route::get('manager-chats/file/{fileId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'getFile'])
+    ->middleware('throttle:100,1');
+
 // Защищённые роуты
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -91,7 +96,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('manager-chats', [\App\Http\Controllers\Api\ManagerChatController::class, 'index']);
             Route::get('manager-chats/managers', [\App\Http\Controllers\Api\ManagerChatController::class, 'getManagers']);
             Route::get('manager-chats/{sessionId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'show']);
-            Route::get('manager-chats/file/{fileId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'getFile']);
+            // Маршрут для получения файлов вынесен в публичную секцию выше
 
             // Settings
             Route::get('settings', [SettingsController::class, 'index']);

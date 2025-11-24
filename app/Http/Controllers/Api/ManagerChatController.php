@@ -180,22 +180,57 @@ class ManagerChatController extends Controller
      */
     public function getFile(Request $request, string $fileId)
     {
-        $botId = $request->get('bot_id');
-        $sessionId = $request->get('session_id');
-
-        if (!$botId && !$sessionId) {
-            return response()->json([
-                'message' => 'bot_id или session_id обязательны',
-            ], 400);
-        }
-
         try {
+            $botId = $request->get('bot_id');
+            $sessionId = $request->get('session_id');
+
+            if (!$botId && !$sessionId) {
+                \Log::warning('getFile: missing bot_id and session_id', [
+                    'file_id' => $fileId,
+                ]);
+                return response()->json([
+                    'message' => 'bot_id или session_id обязательны',
+                ], 400);
+            }
+
             // Получаем бота
+            $bot = null;
             if ($sessionId) {
-                $session = BotSession::with('bot')->findOrFail($sessionId);
-                $bot = $session->bot;
+                try {
+                    $session = BotSession::with('bot')->findOrFail($sessionId);
+                    $bot = $session->bot;
+                } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+                    \Log::warning('getFile: session not found', [
+                        'session_id' => $sessionId,
+                        'file_id' => $fileId,
+                    ]);
+                    return response()->json([
+                        'message' => 'Сессия не найдена',
+                    ], 404);
+                }
             } else {
-                $bot = Bot::findOrFail($botId);
+                try {
+                    $bot = Bot::findOrFail($botId);
+                } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+                    \Log::warning('getFile: bot not found', [
+                        'bot_id' => $botId,
+                        'file_id' => $fileId,
+                    ]);
+                    return response()->json([
+                        'message' => 'Бот не найден',
+                    ], 404);
+                }
+            }
+
+            if (!$bot || !$bot->token) {
+                \Log::error('getFile: bot or token missing', [
+                    'bot_id' => $botId,
+                    'session_id' => $sessionId,
+                    'file_id' => $fileId,
+                ]);
+                return response()->json([
+                    'message' => 'Бот или токен не найден',
+                ], 500);
             }
 
             // Используем ExtendedTelegraph для получения файла
@@ -208,14 +243,24 @@ class ManagerChatController extends Controller
             ]);
 
             if (!isset($fileInfo['ok']) || !$fileInfo['ok']) {
+                \Log::error('getFile: Telegram API error', [
+                    'file_id' => $fileId,
+                    'bot_id' => $bot->id,
+                    'error' => $fileInfo['description'] ?? 'Unknown error',
+                ]);
                 return response()->json([
-                    'message' => 'Ошибка получения файла',
+                    'message' => 'Ошибка получения файла из Telegram',
                     'error' => $fileInfo['description'] ?? 'Unknown error',
                 ], 500);
             }
 
             $filePath = $fileInfo['result']['file_path'] ?? null;
             if (!$filePath) {
+                \Log::error('getFile: file_path not found', [
+                    'file_id' => $fileId,
+                    'bot_id' => $bot->id,
+                    'file_info' => $fileInfo,
+                ]);
                 return response()->json([
                     'message' => 'Путь к файлу не найден',
                 ], 404);
@@ -228,7 +273,10 @@ class ManagerChatController extends Controller
             if ($request->get('redirect', false) || $request->get('redirect') === '1') {
                 // Используем Http::get для получения файла и передачи его клиенту
                 try {
-                    $fileContent = \Illuminate\Support\Facades\Http::timeout(30)->get($fileUrl);
+                    $fileContent = \Illuminate\Support\Facades\Http::timeout(30)
+                        ->retry(2, 1000)
+                        ->get($fileUrl);
+                    
                     if ($fileContent->successful()) {
                         // Определяем Content-Type на основе расширения файла
                         $extension = pathinfo($filePath, PATHINFO_EXTENSION);
@@ -241,20 +289,30 @@ class ManagerChatController extends Controller
                             'mp4' => 'video/mp4',
                             'mp3' => 'audio/mpeg',
                             'ogg' => 'audio/ogg',
+                            'oga' => 'audio/ogg',
                             'pdf' => 'application/pdf',
                             'zip' => 'application/zip',
+                            'm4a' => 'audio/mp4',
                         ];
                         $contentType = $contentTypeMap[strtolower($extension)] ?? $fileContent->header('Content-Type') ?? 'application/octet-stream';
                         
                         return response($fileContent->body(), 200)
                             ->header('Content-Type', $contentType)
                             ->header('Content-Disposition', 'inline')
-                            ->header('Cache-Control', 'public, max-age=3600');
+                            ->header('Cache-Control', 'public, max-age=3600')
+                            ->header('Access-Control-Allow-Origin', '*');
+                    } else {
+                        \Log::error('getFile: failed to fetch file content', [
+                            'file_url' => $fileUrl,
+                            'status' => $fileContent->status(),
+                            'response' => $fileContent->body(),
+                        ]);
                     }
                 } catch (\Exception $e) {
-                    \Log::error('Error fetching file from Telegram', [
+                    \Log::error('getFile: exception while fetching file', [
                         'file_url' => $fileUrl,
                         'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
                     ]);
                 }
                 // Fallback: редирект на оригинальный URL
@@ -267,6 +325,11 @@ class ManagerChatController extends Controller
                 'file_info' => $fileInfo['result'],
             ]);
         } catch (\Exception $e) {
+            \Log::error('getFile: unexpected error', [
+                'file_id' => $fileId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'message' => 'Ошибка получения файла',
                 'error' => $e->getMessage(),
