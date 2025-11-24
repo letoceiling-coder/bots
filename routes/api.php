@@ -72,6 +72,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('bots/{id}/execute-block-method', [BotController::class, 'executeBlockMethod']);
             Route::post('bots/{id}/save-blocks', [BotController::class, 'saveBlocks']);
             Route::get('bots/{id}/blocks', [BotController::class, 'getBlocks']);
+            Route::get('bots/{id}/commands', [BotController::class, 'getBotCommands']);
+            Route::post('bots/{id}/commands', [BotController::class, 'setBotCommands']);
             
             // Bot Sessions
             Route::get('bot-sessions', [BotSessionController::class, 'index']);

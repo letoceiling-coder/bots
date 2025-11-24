@@ -1629,5 +1629,80 @@ class ExtendedTelegraph extends Telegraph
         }
         return $this;
     }
+
+    /**
+     * Установить команды бота (setMyCommands)
+     * Команды будут отображаться в меню бота при нажатии "/"
+     * 
+     * @param array $commands Массив команд, каждая команда должна содержать:
+     *                        - 'command' - название команды (без "/", 1-32 символа)
+     *                        - 'description' - описание команды (3-256 символов)
+     * @param array|null $scope Область действия команд (опционально)
+     * @param string|null $languageCode Код языка для локализации (опционально)
+     * @return TelegraphResponse
+     * @see https://core.telegram.org/bots/api#setmycommands
+     */
+    public function setMyCommands(array $commands, ?array $scope = null, ?string $languageCode = null): TelegraphResponse
+    {
+        $data = [
+            'commands' => $commands,
+        ];
+
+        if ($scope !== null) {
+            $data['scope'] = $scope;
+        }
+
+        if ($languageCode !== null) {
+            $data['language_code'] = $languageCode;
+        }
+
+        return $this->makeRequest('setMyCommands', $data);
+    }
+
+    /**
+     * Получить список команд бота (getMyCommands)
+     * 
+     * @param array|null $scope Область действия команд (опционально)
+     * @param string|null $languageCode Код языка для локализации (опционально)
+     * @return TelegraphResponse
+     * @see https://core.telegram.org/bots/api#getmycommands
+     */
+    public function getMyCommands(?array $scope = null, ?string $languageCode = null): TelegraphResponse
+    {
+        $data = [];
+
+        if ($scope !== null) {
+            $data['scope'] = $scope;
+        }
+
+        if ($languageCode !== null) {
+            $data['language_code'] = $languageCode;
+        }
+
+        return $this->makeRequest('getMyCommands', $data);
+    }
+
+    /**
+     * Удалить команды бота (deleteMyCommands)
+     * 
+     * @param array|null $scope Область действия команд (опционально)
+     * @param string|null $languageCode Код языка для локализации (опционально)
+     * @return TelegraphResponse
+     * @see https://core.telegram.org/bots/api#deletemycommands
+     */
+    public function deleteMyCommands(?array $scope = null, ?string $languageCode = null): TelegraphResponse
+    {
+        $data = [];
+
+        if ($scope !== null) {
+            $data['scope'] = $scope;
+        }
+
+        if ($languageCode !== null) {
+            $data['language_code'] = $languageCode;
+        }
+
+        return $this->makeRequest('deleteMyCommands', $data);
+    }
 }
 

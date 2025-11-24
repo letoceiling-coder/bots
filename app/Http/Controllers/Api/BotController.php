@@ -60,6 +60,9 @@ class BotController extends Controller
             'blocks' => $request->blocks ?? $defaultBlocks,
         ]);
 
+        // Автоматически устанавливаем команды бота из блоков
+        $this->setBotCommandsFromBlocks($bot);
+
         return response()->json([
             'message' => 'Бот успешно создан',
             'data' => $bot,
@@ -109,6 +112,9 @@ class BotController extends Controller
             'is_active' => $request->has('is_active') ? $request->is_active : $bot->is_active,
             'blocks' => $request->has('blocks') ? $request->blocks : $bot->blocks,
         ]);
+
+        // Автоматически обновляем команды бота из блоков
+        $this->setBotCommandsFromBlocks($bot->fresh());
 
         return response()->json([
             'message' => 'Бот успешно обновлен',
@@ -1306,5 +1312,188 @@ class BotController extends Controller
                 'nextBlockId' => null,
             ],
         ];
+    }
+
+    /**
+     * Извлечь команды из блоков бота и установить их через Telegram API
+     * 
+     * @param Bot $bot
+     * @return void
+     */
+    protected function setBotCommandsFromBlocks(Bot $bot): void
+    {
+        try {
+            $blocks = $bot->blocks ?? [];
+            if (empty($blocks)) {
+                Log::info('Bot has no blocks, skipping commands setup', ['bot_id' => $bot->id]);
+                return;
+            }
+
+            $commands = [];
+            $commandDescriptions = [
+                '/start' => 'Начать работу с ботом',
+                '/manager' => 'Связаться с менеджером',
+                '/help' => 'Помощь',
+                '/menu' => 'Главное меню',
+                '/exit' => 'Выход',
+                '/back' => 'Назад',
+            ];
+
+            // Извлекаем команды из блоков
+            foreach ($blocks as $block) {
+                if (isset($block['command']) && !empty($block['command'])) {
+                    $command = $block['command'];
+                    // Убираем "/" из начала команды для API
+                    $commandName = ltrim($command, '/');
+                    
+                    // Пропускаем команды, которые не должны быть в меню (служебные)
+                    if (in_array($command, ['/exit', '/back'])) {
+                        continue;
+                    }
+
+                    // Получаем описание из label или используем дефолтное
+                    $description = $commandDescriptions[$command] ?? 
+                                   ($block['label'] ?? 'Команда бота');
+                    
+                    // Убираем префикс команды из описания, если он есть
+                    if (str_starts_with($description, $command . ' - ')) {
+                        $description = substr($description, strlen($command . ' - '));
+                    } elseif (str_starts_with($description, $command . ' ')) {
+                        $description = substr($description, strlen($command . ' '));
+                    }
+
+                    // Ограничиваем длину описания (3-256 символов по API)
+                    $description = mb_substr($description, 0, 256);
+                    if (mb_strlen($description) < 3) {
+                        $description = $commandDescriptions[$command] ?? 'Команда бота';
+                    }
+
+                    // Проверяем, что команда еще не добавлена
+                    $exists = false;
+                    foreach ($commands as $cmd) {
+                        if ($cmd['command'] === $commandName) {
+                            $exists = true;
+                            break;
+                        }
+                    }
+
+                    if (!$exists) {
+                        $commands[] = [
+                            'command' => $commandName,
+                            'description' => $description,
+                        ];
+                    }
+                }
+            }
+
+            // Если есть команды, устанавливаем их
+            if (!empty($commands)) {
+                $telegraph = new ExtendedTelegraph();
+                $telegraph->setBot($bot);
+                $result = $telegraph->setMyCommands($commands);
+
+                if (isset($result['ok']) && $result['ok'] === true) {
+                    Log::info('Bot commands set successfully', [
+                        'bot_id' => $bot->id,
+                        'commands_count' => count($commands),
+                        'commands' => $commands,
+                    ]);
+                } else {
+                    Log::warning('Failed to set bot commands', [
+                        'bot_id' => $bot->id,
+                        'result' => $result,
+                    ]);
+                }
+            } else {
+                Log::info('No commands found in bot blocks', ['bot_id' => $bot->id]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error setting bot commands', [
+                'bot_id' => $bot->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Установить команды бота вручную
+     * 
+     * @param Request $request
+     * @param string $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function setBotCommands(Request $request, string $id)
+    {
+        $bot = Bot::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'commands' => 'required|array',
+            'commands.*.command' => 'required|string|max:32|regex:/^[a-z0-9_]+$/i',
+            'commands.*.description' => 'required|string|min:3|max:256',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Ошибка валидации',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $telegraph = new ExtendedTelegraph();
+            $telegraph->setBot($bot);
+            $result = $telegraph->setMyCommands($request->commands);
+
+            if (isset($result['ok']) && $result['ok'] === true) {
+                return response()->json([
+                    'message' => 'Команды бота успешно установлены',
+                    'data' => $result,
+                ]);
+            } else {
+                return response()->json([
+                    'message' => 'Ошибка установки команд бота',
+                    'error' => $result['description'] ?? 'Unknown error',
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Ошибка установки команд бота',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Получить текущие команды бота
+     * 
+     * @param string $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getBotCommands(string $id)
+    {
+        $bot = Bot::findOrFail($id);
+
+        try {
+            $telegraph = new ExtendedTelegraph();
+            $telegraph->setBot($bot);
+            $result = $telegraph->getMyCommands();
+
+            if (isset($result['ok']) && $result['ok'] === true) {
+                return response()->json([
+                    'message' => 'Команды бота получены',
+                    'data' => $result['result'] ?? [],
+                ]);
+            } else {
+                return response()->json([
+                    'message' => 'Ошибка получения команд бота',
+                    'error' => $result['description'] ?? 'Unknown error',
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Ошибка получения команд бота',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }
