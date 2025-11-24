@@ -74,6 +74,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('bots/{id}/blocks', [BotController::class, 'getBlocks']);
             Route::get('bots/{id}/commands', [BotController::class, 'getBotCommands']);
             Route::post('bots/{id}/commands', [BotController::class, 'setBotCommands']);
+            Route::get('bots/{id}/menu-button', [BotController::class, 'getBotMenuButton']);
+            Route::post('bots/{id}/menu-button', [BotController::class, 'setBotMenuButton']);
             
             // Bot Sessions
             Route::get('bot-sessions', [BotSessionController::class, 'index']);
@@ -84,6 +86,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('bot-users', [BotUserController::class, 'index']);
             Route::get('bots/{botId}/users', [BotUserController::class, 'getBotUsers']);
             Route::apiResource('bot-users', BotUserController::class)->except(['index']);
+
+            // Manager Chats (Диалоги)
+            Route::get('manager-chats', [\App\Http\Controllers\Api\ManagerChatController::class, 'index']);
+            Route::get('manager-chats/managers', [\App\Http\Controllers\Api\ManagerChatController::class, 'getManagers']);
+            Route::get('manager-chats/{sessionId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'show']);
 
             // Settings
             Route::get('settings', [SettingsController::class, 'index']);

@@ -113,6 +113,12 @@ class AdminMenu
                 'icon' => 'user-check',
                 'roles' => ['admin', 'manager'],
             ],
+            [
+                'title' => 'Диалоги',
+                'route' => 'admin.manager-chats',
+                'icon' => 'message-square',
+                'roles' => ['admin', 'manager'],
+            ],
         ]);
 
         if (!$user) {

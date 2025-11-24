@@ -47,6 +47,15 @@ class ManagerChatMessage extends Model
     }
 
     /**
+     * Менеджер
+     */
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(BotUser::class, 'manager_telegram_user_id', 'telegram_user_id')
+            ->where('bot_id', $this->bot_id);
+    }
+
+    /**
      * Пометить сообщение как прочитанное
      */
     public function markAsRead(): void

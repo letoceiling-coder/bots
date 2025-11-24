@@ -1390,6 +1390,8 @@ class BotController extends Controller
             if (!empty($commands)) {
                 $telegraph = new ExtendedTelegraph();
                 $telegraph->setBot($bot);
+                
+                // Устанавливаем команды
                 $result = $telegraph->setMyCommands($commands);
 
                 if (isset($result['ok']) && $result['ok'] === true) {
@@ -1398,6 +1400,29 @@ class BotController extends Controller
                         'commands_count' => count($commands),
                         'commands' => $commands,
                     ]);
+
+                    // Устанавливаем кнопку меню для отображения команд
+                    try {
+                        $menuResult = $telegraph->setChatMenuButton([
+                            'type' => 'commands',
+                        ]);
+                        
+                        if (isset($menuResult['ok']) && $menuResult['ok'] === true) {
+                            Log::info('Bot menu button set successfully', [
+                                'bot_id' => $bot->id,
+                            ]);
+                        } else {
+                            Log::warning('Failed to set bot menu button', [
+                                'bot_id' => $bot->id,
+                                'result' => $menuResult,
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Error setting bot menu button', [
+                            'bot_id' => $bot->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 } else {
                     Log::warning('Failed to set bot commands', [
                         'bot_id' => $bot->id,
@@ -1492,6 +1517,95 @@ class BotController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Ошибка получения команд бота',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Установить кнопку меню бота
+     * 
+     * @param Request $request
+     * @param string $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function setBotMenuButton(Request $request, string $id)
+    {
+        $bot = Bot::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'menu_button' => 'nullable|array',
+            'menu_button.type' => 'nullable|in:commands,web_app,default',
+            'chat_id' => 'nullable|string|integer',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Ошибка валидации',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $telegraph = new ExtendedTelegraph();
+            $telegraph->setBot($bot);
+            
+            $menuButton = $request->input('menu_button', ['type' => 'commands']);
+            $chatId = $request->input('chat_id');
+            
+            $result = $telegraph->setChatMenuButton($menuButton, $chatId);
+
+            if (isset($result['ok']) && $result['ok'] === true) {
+                return response()->json([
+                    'message' => 'Кнопка меню бота успешно установлена',
+                    'data' => $result,
+                ]);
+            } else {
+                return response()->json([
+                    'message' => 'Ошибка установки кнопки меню бота',
+                    'error' => $result['description'] ?? 'Unknown error',
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Ошибка установки кнопки меню бота',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Получить текущую настройку кнопки меню бота
+     * 
+     * @param Request $request
+     * @param string $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getBotMenuButton(Request $request, string $id)
+    {
+        $bot = Bot::findOrFail($id);
+
+        try {
+            $telegraph = new ExtendedTelegraph();
+            $telegraph->setBot($bot);
+            
+            $chatId = $request->input('chat_id');
+            $result = $telegraph->getChatMenuButton($chatId);
+
+            if (isset($result['ok']) && $result['ok'] === true) {
+                return response()->json([
+                    'message' => 'Настройка кнопки меню бота получена',
+                    'data' => $result['result'] ?? [],
+                ]);
+            } else {
+                return response()->json([
+                    'message' => 'Ошибка получения настройки кнопки меню бота',
+                    'error' => $result['description'] ?? 'Unknown error',
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Ошибка получения настройки кнопки меню бота',
                 'error' => $e->getMessage(),
             ], 500);
         }

@@ -270,6 +270,12 @@ const routes = [
                 component: () => import('./pages/admin/BotUsers.vue'),
                 meta: { requiresAuth: true, requiresRole: ['admin', 'manager'] },
             },
+            {
+                path: 'manager-chats',
+                name: 'admin.manager-chats',
+                component: () => import('./pages/admin/ManagerChats.vue'),
+                meta: { requiresAuth: true, requiresRole: ['admin', 'manager'] },
+            },
         ],
     },
 ];

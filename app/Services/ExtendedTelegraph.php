@@ -1704,5 +1704,55 @@ class ExtendedTelegraph extends Telegraph
 
         return $this->makeRequest('deleteMyCommands', $data);
     }
+
+    /**
+     * Установить кнопку меню бота (setChatMenuButton)
+     * Настраивает кнопку меню, которая отображается рядом с полем ввода
+     * 
+     * @param array|null $menuButton Объект кнопки меню:
+     *                                - 'type' => 'commands' - показать команды
+     *                                - 'type' => 'web_app' - показать веб-приложение
+     *                                - 'type' => 'default' - использовать дефолтную кнопку
+     * @param string|int|null $chatId ID чата (опционально, по умолчанию для всех чатов)
+     * @return TelegraphResponse
+     * @see https://core.telegram.org/bots/api#setchatmenubutton
+     */
+    public function setChatMenuButton(?array $menuButton = null, $chatId = null): TelegraphResponse
+    {
+        $data = [];
+
+        // Если menuButton не указан, используем дефолтный (команды)
+        if ($menuButton === null) {
+            $data['menu_button'] = [
+                'type' => 'commands',
+            ];
+        } else {
+            $data['menu_button'] = $menuButton;
+        }
+
+        if ($chatId !== null) {
+            $data['chat_id'] = $chatId;
+        }
+
+        return $this->makeRequest('setChatMenuButton', $data);
+    }
+
+    /**
+     * Получить текущую настройку кнопки меню бота (getChatMenuButton)
+     * 
+     * @param string|int|null $chatId ID чата (опционально)
+     * @return TelegraphResponse
+     * @see https://core.telegram.org/bots/api#getchatmenubutton
+     */
+    public function getChatMenuButton($chatId = null): TelegraphResponse
+    {
+        $data = [];
+
+        if ($chatId !== null) {
+            $data['chat_id'] = $chatId;
+        }
+
+        return $this->makeRequest('getChatMenuButton', $data);
+    }
 }
 
