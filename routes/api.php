@@ -36,7 +36,7 @@ Route::match(['GET', 'POST'], '/telegram/webhook/{bot_id}', [TelegramWebhookCont
 // Публичный маршрут для получения файлов из Telegram (прокси)
 // Используется для отображения медиа в диалогах менеджеров
 // Используем where для разрешения всех символов в file_id (включая слэши и специальные символы)
-Route::get('manager-chats/file/{fileId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'getFile'])
+Route::match(['GET', 'OPTIONS'], 'manager-chats/file/{fileId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'getFile'])
     ->where('fileId', '.+')
     ->middleware('throttle:100,1');
 

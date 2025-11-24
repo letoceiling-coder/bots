@@ -180,21 +180,41 @@ class ManagerChatController extends Controller
      */
     public function getFile(Request $request, string $fileId)
     {
+        // Обработка OPTIONS запроса для CORS
+        if ($request->method() === 'OPTIONS') {
+            return response('', 200)
+                ->header('Access-Control-Allow-Origin', '*')
+                ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                ->header('Access-Control-Allow-Headers', 'Content-Type');
+        }
+        
+        // Логируем входящий запрос ДО любой обработки
+        \Log::info('getFile: incoming request', [
+            'raw_file_id' => $fileId,
+            'raw_file_id_length' => strlen($fileId),
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'path' => $request->path(),
+            'query_params' => $request->query(),
+        ]);
+        
         // Декодируем file_id, так как он может быть закодирован в URL
         // Также проверяем, не был ли он передан как query параметр
         if (empty($fileId) && $request->has('file_id')) {
             $fileId = $request->get('file_id');
         }
-        $fileId = urldecode($fileId);
         
-        \Log::info('getFile: request received', [
-            'file_id' => $fileId,
-            'file_id_length' => strlen($fileId),
-            'file_id_encoded' => urlencode($fileId),
+        // Декодируем только если file_id не пустой
+        if (!empty($fileId)) {
+            $fileId = urldecode($fileId);
+        }
+        
+        \Log::info('getFile: after decoding', [
+            'decoded_file_id' => $fileId,
+            'decoded_file_id_length' => strlen($fileId),
             'bot_id' => $request->get('bot_id'),
             'session_id' => $request->get('session_id'),
             'redirect' => $request->get('redirect'),
-            'all_params' => $request->all(),
         ]);
         
         try {
@@ -315,11 +335,24 @@ class ManagerChatController extends Controller
 
             // Перенаправляем на файл или возвращаем URL
             if ($request->get('redirect', false) || $request->get('redirect') === '1') {
+                \Log::info('getFile: fetching file from Telegram', [
+                    'file_url' => $fileUrl,
+                    'file_id' => $fileId,
+                    'file_path' => $filePath,
+                ]);
+                
                 // Используем Http::get для получения файла и передачи его клиенту
                 try {
                     $fileContent = \Illuminate\Support\Facades\Http::timeout(30)
                         ->retry(2, 1000)
                         ->get($fileUrl);
+                    
+                    \Log::info('getFile: HTTP response received', [
+                        'status' => $fileContent->status(),
+                        'successful' => $fileContent->successful(),
+                        'headers' => $fileContent->headers(),
+                        'body_length' => strlen($fileContent->body()),
+                    ]);
                     
                     if ($fileContent->successful()) {
                         // Определяем Content-Type на основе расширения файла
@@ -340,7 +373,7 @@ class ManagerChatController extends Controller
                         ];
                         $contentType = $contentTypeMap[strtolower($extension)] ?? $fileContent->header('Content-Type') ?? 'application/octet-stream';
                         
-                        \Log::info('getFile: file fetched successfully', [
+                        \Log::info('getFile: file fetched successfully, returning response', [
                             'file_id' => $fileId,
                             'file_path' => $filePath,
                             'content_type' => $contentType,
@@ -351,24 +384,40 @@ class ManagerChatController extends Controller
                             ->header('Content-Type', $contentType)
                             ->header('Content-Disposition', 'inline')
                             ->header('Cache-Control', 'public, max-age=3600')
-                            ->header('Access-Control-Allow-Origin', '*');
+                            ->header('Access-Control-Allow-Origin', '*')
+                            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+                            ->header('Access-Control-Allow-Headers', 'Content-Type');
                     } else {
-                        \Log::error('getFile: failed to fetch file content', [
+                        \Log::error('getFile: failed to fetch file content from Telegram', [
                             'file_url' => $fileUrl,
                             'file_id' => $fileId,
                             'status' => $fileContent->status(),
-                            'response' => substr($fileContent->body(), 0, 500), // Первые 500 символов
+                            'response_body' => substr($fileContent->body(), 0, 1000), // Первые 1000 символов
+                            'response_headers' => $fileContent->headers(),
                         ]);
+                        
+                        // Возвращаем ошибку вместо редиректа
+                        return response()->json([
+                            'message' => 'Ошибка получения файла из Telegram',
+                            'error' => 'HTTP ' . $fileContent->status(),
+                            'file_id' => $fileId,
+                        ], $fileContent->status());
                     }
                 } catch (\Exception $e) {
-                    \Log::error('getFile: exception while fetching file', [
+                    \Log::error('getFile: exception while fetching file from Telegram', [
                         'file_url' => $fileUrl,
+                        'file_id' => $fileId,
                         'error' => $e->getMessage(),
                         'trace' => $e->getTraceAsString(),
                     ]);
+                    
+                    // Возвращаем ошибку вместо редиректа
+                    return response()->json([
+                        'message' => 'Ошибка получения файла',
+                        'error' => $e->getMessage(),
+                        'file_id' => $fileId,
+                    ], 500);
                 }
-                // Fallback: редирект на оригинальный URL
-                return redirect($fileUrl);
             }
 
             return response()->json([
