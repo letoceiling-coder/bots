@@ -45,13 +45,19 @@ class BotController extends Controller
             ], 422);
         }
 
+        // Создаем дефолтные блоки, если они не переданы
+        $defaultBlocks = null;
+        if (!$request->has('blocks') || empty($request->blocks)) {
+            $defaultBlocks = $this->getDefaultBlocks();
+        }
+
         $bot = Bot::create([
             'name' => $request->name,
             'token' => $request->token,
             'username' => $request->username,
             'description' => $request->description,
             'is_active' => $request->has('is_active') ? $request->is_active : true,
-            'blocks' => $request->blocks ?? null,
+            'blocks' => $request->blocks ?? $defaultBlocks,
         ]);
 
         return response()->json([
@@ -1043,5 +1049,42 @@ class BotController extends Controller
                 'blocks' => $bot->blocks ?? [],
             ],
         ]);
+    }
+
+    /**
+     * Получить дефолтные блоки для нового бота
+     *
+     * @return array
+     */
+    protected function getDefaultBlocks(): array
+    {
+        return [
+            [
+                'id' => '1',
+                'label' => '/start - Приветствие',
+                'type' => 'command',
+                'method' => 'sendMessage',
+                'method_data' => [
+                    'text' => 'Добро пожаловать! 👋\n\nВыберите действие:',
+                ],
+                'command' => '/start',
+                'x' => 100,
+                'y' => 100,
+                'nextBlockId' => null,
+            ],
+            [
+                'id' => '2',
+                'label' => '/manager - Связь с менеджером',
+                'type' => 'command',
+                'method' => 'managerChat',
+                'method_data' => [
+                    'text' => '🔔 Вы переключены на связь с менеджером.\n\nОпишите ваш вопрос, и менеджер свяжется с вами в ближайшее время.\n\nДля выхода используйте команды: /exit, /back или /menu',
+                ],
+                'command' => '/manager',
+                'x' => 100,
+                'y' => 250,
+                'nextBlockId' => null,
+            ],
+        ];
     }
 }
