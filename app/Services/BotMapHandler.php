@@ -87,7 +87,30 @@ class BotMapHandler
                 ->first();
 
             if ($activeSession) {
+                Log::info('Manager message received, forwarding to user session', [
+                    'bot_id' => $bot->id,
+                    'manager_telegram_user_id' => $telegramUserId,
+                    'target_session_id' => $activeSession->id,
+                    'target_chat_id' => $activeSession->chat_id,
+                ]);
                 $this->handleManagerChatMessage($bot, $activeSession, $message);
+                return;
+            } else {
+                Log::warning('Manager sent message but no active manager_chat session found', [
+                    'bot_id' => $bot->id,
+                    'manager_telegram_user_id' => $telegramUserId,
+                    'chat_id' => $chatId,
+                ]);
+                // Не создаем сессию для менеджера, просто возвращаемся
+                // Можно отправить сообщение менеджеру, что нет активных запросов
+                try {
+                    $telegraph = $this->telegramService->bot($bot)->chat($chatId);
+                    $telegraph->message("Нет активных запросов на связь с менеджером.")->send();
+                } catch (\Exception $e) {
+                    Log::error('Error sending message to manager', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
                 return;
             }
         }
@@ -1158,8 +1181,9 @@ class BotMapHandler
             return;
         }
 
+        // Определяем целевую сессию пользователя
         // Если менеджер отвечает на сообщение, пытаемся найти сессию по reply_to_message
-        $targetSession = $session;
+        $targetSession = null;
         if ($replyToMessage) {
             $replyText = $replyToMessage['text'] ?? '';
             // Ищем chat_id в тексте уведомления
@@ -1171,27 +1195,56 @@ class BotMapHandler
                     ->latest('last_activity_at')
                     ->first();
                 
-                if (!$targetSession) {
-                    $targetSession = $session; // Fallback на текущую сессию
-                }
+                Log::info('Found target session by reply_to_message', [
+                    'target_chat_id' => $targetChatId,
+                    'session_found' => $targetSession !== null,
+                    'session_id' => $targetSession->id ?? null,
+                ]);
             }
         }
 
-        // Если сессия не найдена, ищем последнюю активную сессию в режиме manager_chat
-        if (!$targetSession || $targetSession->status !== 'manager_chat') {
-            $targetSession = BotSession::where('bot_id', $bot->id)
-                ->where('status', 'manager_chat')
-                ->latest('last_activity_at')
-                ->first();
+        // Если сессия не найдена по reply_to_message, используем переданную сессию
+        // (которая должна быть активной сессией в режиме manager_chat)
+        if (!$targetSession) {
+            // Проверяем, что переданная сессия действительно в режиме manager_chat
+            if ($session && $session->status === 'manager_chat') {
+                $targetSession = $session;
+                Log::info('Using provided session for manager message', [
+                    'session_id' => $targetSession->id,
+                    'chat_id' => $targetSession->chat_id,
+                ]);
+            } else {
+                // Ищем последнюю активную сессию в режиме manager_chat
+                $targetSession = BotSession::where('bot_id', $bot->id)
+                    ->where('status', 'manager_chat')
+                    ->latest('last_activity_at')
+                    ->first();
+                
+                Log::info('Searched for active manager_chat session', [
+                    'session_found' => $targetSession !== null,
+                    'session_id' => $targetSession->id ?? null,
+                ]);
+            }
         }
 
         if (!$targetSession) {
-            Log::warning('No active manager chat session found', [
+            Log::warning('No active manager chat session found to forward message', [
                 'bot_id' => $bot->id,
                 'manager_id' => $manager->id,
+                'manager_telegram_user_id' => $managerTelegramUserId,
+                'provided_session_id' => $session->id ?? null,
+                'provided_session_status' => $session->status ?? null,
             ]);
             return;
         }
+
+        Log::info('Forwarding manager message to user', [
+            'bot_id' => $bot->id,
+            'manager_id' => $manager->id,
+            'target_session_id' => $targetSession->id,
+            'target_chat_id' => $targetSession->chat_id,
+            'message_type' => $messageType,
+        ]);
 
         $telegraph = $this->telegramService->bot($bot);
         $forwardedMessageId = null;
