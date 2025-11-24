@@ -1709,6 +1709,8 @@ class ExtendedTelegraph extends Telegraph
      * Установить кнопку меню бота (setChatMenuButton)
      * Настраивает кнопку меню, которая отображается рядом с полем ввода
      * 
+     * Этот метод использует прямой вызов API, чтобы избежать конфликта с родительским классом
+     * 
      * @param array|null $menuButton Объект кнопки меню:
      *                                - 'type' => 'commands' - показать команды
      *                                - 'type' => 'web_app' - показать веб-приложение
@@ -1717,7 +1719,7 @@ class ExtendedTelegraph extends Telegraph
      * @return array
      * @see https://core.telegram.org/bots/api#setchatmenubutton
      */
-    public function setChatMenuButton(?array $menuButton = null, $chatId = null): array
+    public function setChatMenuButtonDirect(?array $menuButton = null, $chatId = null): array
     {
         $data = [];
 
@@ -1740,11 +1742,13 @@ class ExtendedTelegraph extends Telegraph
     /**
      * Получить текущую настройку кнопки меню бота (getChatMenuButton)
      * 
+     * Этот метод использует прямой вызов API, чтобы избежать конфликта с родительским классом
+     * 
      * @param string|int|null $chatId ID чата (опционально)
-     * @return TelegraphResponse
+     * @return array
      * @see https://core.telegram.org/bots/api#getchatmenubutton
      */
-    public function getChatMenuButton($chatId = null): TelegraphResponse
+    public function getChatMenuButtonDirect($chatId = null): array
     {
         $data = [];
 
@@ -1752,7 +1756,7 @@ class ExtendedTelegraph extends Telegraph
             $data['chat_id'] = $chatId;
         }
 
-        return $this->makeRequest('getChatMenuButton', $data);
+        return $this->makeRequest('getChatMenuButton', $data, 'GET');
     }
 }
 

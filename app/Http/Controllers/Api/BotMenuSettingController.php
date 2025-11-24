@@ -90,7 +90,7 @@ class BotMenuSettingController extends Controller
                 $telegraph->setBot($bot);
 
                 $menuButton = ['type' => $setting->menu_type];
-                $result = $telegraph->setChatMenuButton($menuButton, null);
+                $result = $telegraph->setChatMenuButtonDirect($menuButton, null);
 
                 if (isset($result['ok']) && $result['ok'] === true) {
                     Log::info('Bot menu button set via settings', [
@@ -115,7 +115,7 @@ class BotMenuSettingController extends Controller
                 $telegraph = new ExtendedTelegraph();
                 $telegraph->setBot($bot);
 
-                $result = $telegraph->setChatMenuButton(['type' => 'default'], null);
+                $result = $telegraph->setChatMenuButtonDirect(['type' => 'default'], null);
 
                 if (isset($result['ok']) && $result['ok'] === true) {
                     Log::info('Bot menu button disabled via settings', [

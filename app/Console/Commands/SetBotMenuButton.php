@@ -119,7 +119,7 @@ class SetBotMenuButton extends Command
                     $menuButton = ['type' => 'commands'];
                 }
 
-                $result = $telegraph->setChatMenuButton($menuButton, null);
+                $result = $telegraph->setChatMenuButtonDirect($menuButton, null);
 
                 if (isset($result['ok']) && $result['ok'] === true) {
                     $successCount++;

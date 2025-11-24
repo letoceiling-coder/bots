@@ -1414,7 +1414,7 @@ class BotController extends Controller
             // Это нужно для того, чтобы кнопка меню отображалась в поле ввода
             try {
                 // Устанавливаем кнопку меню БЕЗ указания chat_id (для всех пользователей)
-                $menuResult = $telegraph->setChatMenuButton([
+                $menuResult = $telegraph->setChatMenuButtonDirect([
                     'type' => 'commands',
                 ], null); // null = для всех пользователей
                 
@@ -1477,7 +1477,7 @@ class BotController extends Controller
             if (isset($result['ok']) && $result['ok'] === true) {
                 // Устанавливаем кнопку меню для отображения команд
                 try {
-                    $menuResult = $telegraph->setChatMenuButton(['type' => 'commands'], null);
+                    $menuResult = $telegraph->setChatMenuButtonDirect(['type' => 'commands'], null);
                     if (isset($menuResult['ok']) && $menuResult['ok'] === true) {
                         Log::info('Bot menu button set after commands update', ['bot_id' => $bot->id]);
                     }
@@ -1571,7 +1571,7 @@ class BotController extends Controller
             $menuButton = $request->input('menu_button', ['type' => 'commands']);
             $chatId = $request->input('chat_id');
             
-            $result = $telegraph->setChatMenuButton($menuButton, $chatId);
+            $result = $telegraph->setChatMenuButtonDirect($menuButton, $chatId);
 
             if (isset($result['ok']) && $result['ok'] === true) {
                 return response()->json([
@@ -1608,7 +1608,7 @@ class BotController extends Controller
             $telegraph->setBot($bot);
             
             $chatId = $request->input('chat_id');
-            $result = $telegraph->getChatMenuButton($chatId);
+            $result = $telegraph->getChatMenuButtonDirect($chatId);
 
             if (isset($result['ok']) && $result['ok'] === true) {
                 return response()->json([
