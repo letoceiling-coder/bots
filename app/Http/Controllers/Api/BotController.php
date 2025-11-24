@@ -1386,11 +1386,11 @@ class BotController extends Controller
                 }
             }
 
+            $telegraph = new ExtendedTelegraph();
+            $telegraph->setBot($bot);
+            
             // Если есть команды, устанавливаем их
             if (!empty($commands)) {
-                $telegraph = new ExtendedTelegraph();
-                $telegraph->setBot($bot);
-                
                 // Устанавливаем команды
                 $result = $telegraph->setMyCommands($commands);
 
@@ -1400,29 +1400,6 @@ class BotController extends Controller
                         'commands_count' => count($commands),
                         'commands' => $commands,
                     ]);
-
-                    // Устанавливаем кнопку меню для отображения команд
-                    try {
-                        $menuResult = $telegraph->setChatMenuButton([
-                            'type' => 'commands',
-                        ]);
-                        
-                        if (isset($menuResult['ok']) && $menuResult['ok'] === true) {
-                            Log::info('Bot menu button set successfully', [
-                                'bot_id' => $bot->id,
-                            ]);
-                        } else {
-                            Log::warning('Failed to set bot menu button', [
-                                'bot_id' => $bot->id,
-                                'result' => $menuResult,
-                            ]);
-                        }
-                    } catch (\Exception $e) {
-                        Log::warning('Error setting bot menu button', [
-                            'bot_id' => $bot->id,
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
                 } else {
                     Log::warning('Failed to set bot commands', [
                         'bot_id' => $bot->id,
@@ -1431,6 +1408,34 @@ class BotController extends Controller
                 }
             } else {
                 Log::info('No commands found in bot blocks', ['bot_id' => $bot->id]);
+            }
+
+            // Всегда устанавливаем кнопку меню для отображения команд (даже если команд нет)
+            // Это нужно для того, чтобы кнопка меню отображалась в поле ввода
+            try {
+                // Устанавливаем кнопку меню БЕЗ указания chat_id (для всех пользователей)
+                $menuResult = $telegraph->setChatMenuButton([
+                    'type' => 'commands',
+                ], null); // null = для всех пользователей
+                
+                // Проверяем ответ (makeRequest возвращает массив)
+                if (isset($menuResult['ok']) && $menuResult['ok'] === true) {
+                    Log::info('Bot menu button set successfully', [
+                        'bot_id' => $bot->id,
+                        'has_commands' => !empty($commands),
+                    ]);
+                } else {
+                    Log::warning('Failed to set bot menu button', [
+                        'bot_id' => $bot->id,
+                        'result' => $menuResult,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('Error setting bot menu button', [
+                    'bot_id' => $bot->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
             }
         } catch (\Exception $e) {
             Log::error('Error setting bot commands', [
@@ -1470,6 +1475,19 @@ class BotController extends Controller
             $result = $telegraph->setMyCommands($request->commands);
 
             if (isset($result['ok']) && $result['ok'] === true) {
+                // Устанавливаем кнопку меню для отображения команд
+                try {
+                    $menuResult = $telegraph->setChatMenuButton(['type' => 'commands'], null);
+                    if (isset($menuResult['ok']) && $menuResult['ok'] === true) {
+                        Log::info('Bot menu button set after commands update', ['bot_id' => $bot->id]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to set bot menu button after commands update', [
+                        'bot_id' => $bot->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                
                 return response()->json([
                     'message' => 'Команды бота успешно установлены',
                     'data' => $result,

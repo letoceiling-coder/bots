@@ -170,5 +170,108 @@ class ManagerChatController extends Controller
 
         return response()->json(['data' => $managers]);
     }
+
+    /**
+     * Получить файл из Telegram (прокси для безопасности токена)
+     * 
+     * @param Request $request
+     * @param string $fileId
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\Response
+     */
+    public function getFile(Request $request, string $fileId)
+    {
+        $botId = $request->get('bot_id');
+        $sessionId = $request->get('session_id');
+
+        if (!$botId && !$sessionId) {
+            return response()->json([
+                'message' => 'bot_id или session_id обязательны',
+            ], 400);
+        }
+
+        try {
+            // Получаем бота
+            if ($sessionId) {
+                $session = BotSession::with('bot')->findOrFail($sessionId);
+                $bot = $session->bot;
+            } else {
+                $bot = Bot::findOrFail($botId);
+            }
+
+            // Используем ExtendedTelegraph для получения файла
+            $telegraph = new \App\Services\ExtendedTelegraph();
+            $telegraph->setBot($bot);
+            
+            // Получаем информацию о файле
+            $fileInfo = $telegraph->makeRequest('getFile', [
+                'file_id' => $fileId,
+            ]);
+
+            if (!isset($fileInfo['ok']) || !$fileInfo['ok']) {
+                return response()->json([
+                    'message' => 'Ошибка получения файла',
+                    'error' => $fileInfo['description'] ?? 'Unknown error',
+                ], 500);
+            }
+
+            $filePath = $fileInfo['result']['file_path'] ?? null;
+            if (!$filePath) {
+                return response()->json([
+                    'message' => 'Путь к файлу не найден',
+                ], 404);
+            }
+
+            // Формируем URL для файла
+            $fileUrl = "https://api.telegram.org/file/bot{$bot->token}/{$filePath}";
+
+            // Перенаправляем на файл или возвращаем URL
+            if ($request->get('redirect', false) || $request->get('redirect') === '1') {
+                // Используем Http::get для получения файла и передачи его клиенту
+                try {
+                    $fileContent = \Illuminate\Support\Facades\Http::timeout(30)->get($fileUrl);
+                    if ($fileContent->successful()) {
+                        // Определяем Content-Type на основе расширения файла
+                        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+                        $contentTypeMap = [
+                            'jpg' => 'image/jpeg',
+                            'jpeg' => 'image/jpeg',
+                            'png' => 'image/png',
+                            'gif' => 'image/gif',
+                            'webp' => 'image/webp',
+                            'mp4' => 'video/mp4',
+                            'mp3' => 'audio/mpeg',
+                            'ogg' => 'audio/ogg',
+                            'pdf' => 'application/pdf',
+                            'zip' => 'application/zip',
+                        ];
+                        $contentType = $contentTypeMap[strtolower($extension)] ?? $fileContent->header('Content-Type') ?? 'application/octet-stream';
+                        
+                        return response($fileContent->body(), 200)
+                            ->header('Content-Type', $contentType)
+                            ->header('Content-Disposition', 'inline')
+                            ->header('Cache-Control', 'public, max-age=3600');
+                    }
+                } catch (\Exception $e) {
+                    \Log::error('Error fetching file from Telegram', [
+                        'file_url' => $fileUrl,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                // Fallback: редирект на оригинальный URL
+                return redirect($fileUrl);
+            }
+
+            return response()->json([
+                'url' => $fileUrl,
+                'file_path' => $filePath,
+                'file_info' => $fileInfo['result'],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Ошибка получения файла',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }
 

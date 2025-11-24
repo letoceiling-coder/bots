@@ -129,6 +129,36 @@
             <p class="text-muted-foreground">Диалоги не найдены</p>
         </div>
 
+        <!-- Media Viewer Modal -->
+        <div v-if="showMediaViewer && currentMediaUrl" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm" @click.self="closeMediaViewer">
+            <div class="relative max-w-5xl max-h-[90vh] p-4">
+                <button
+                    @click="closeMediaViewer"
+                    class="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors z-10"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+                <img
+                    v-if="currentMediaType === 'photo' || currentMediaType === 'animation' || currentMediaType === 'sticker'"
+                    :src="currentMediaUrl"
+                    alt="Медиа"
+                    class="max-w-full max-h-[90vh] rounded-lg"
+                    @error="handleImageError"
+                />
+                <video
+                    v-else-if="currentMediaType === 'video' || currentMediaType === 'video_note'"
+                    :src="currentMediaUrl"
+                    controls
+                    class="max-w-full max-h-[90vh] rounded-lg"
+                    autoplay
+                >
+                    Ваш браузер не поддерживает видео.
+                </video>
+            </div>
+        </div>
+
         <!-- Dialogue Modal -->
         <div v-if="showDialogueModal && selectedDialogue" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div class="bg-background border border-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -184,45 +214,128 @@
                                     <span>{{ getMessageTypeLabel(message.message_type) }}</span>
                                 </span>
                             </div>
-                            <div v-if="message.telegram_data && message.message_type !== 'text'" class="mt-2 space-y-1">
-                                <div v-if="message.message_type === 'photo' && message.telegram_data.photo" class="text-xs text-muted-foreground">
-                                    <p>📷 Фото ({{ message.telegram_data.photo.length }} {{ message.telegram_data.photo.length === 1 ? 'изображение' : 'изображения' }})</p>
-                                    <p v-if="message.telegram_data.caption" class="italic mt-1">{{ message.telegram_data.caption }}</p>
+                            <div v-if="message.telegram_data && message.message_type !== 'text'" class="mt-2 space-y-2">
+                                <!-- Фото -->
+                                <div v-if="message.message_type === 'photo' && message.telegram_data.photo" class="space-y-2">
+                                    <div class="relative">
+                                        <img
+                                            :src="getMediaUrl(getLargestPhotoFileId(message.telegram_data.photo), 'photo')"
+                                            alt="Фото"
+                                            class="max-w-md rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                            @click="openMediaViewer(getMediaUrl(getLargestPhotoFileId(message.telegram_data.photo), 'photo'), 'photo')"
+                                            @error="handleImageError"
+                                            loading="lazy"
+                                        />
+                                    </div>
+                                    <p v-if="message.telegram_data.caption" class="text-xs text-muted-foreground italic">{{ message.telegram_data.caption }}</p>
                                 </div>
-                                <div v-else-if="message.message_type === 'video' && message.telegram_data.video" class="text-xs text-muted-foreground">
-                                    <p>🎥 Видео: {{ message.telegram_data.video.file_name || 'Видео файл' }}</p>
-                                    <p v-if="message.telegram_data.video.file_size">Размер: {{ formatFileSize(message.telegram_data.video.file_size) }}</p>
-                                    <p v-if="message.telegram_data.video.duration">Длительность: {{ formatDuration(message.telegram_data.video.duration) }}</p>
-                                    <p v-if="message.telegram_data.caption" class="italic mt-1">{{ message.telegram_data.caption }}</p>
+                                <!-- Видео -->
+                                <div v-else-if="message.message_type === 'video' && message.telegram_data.video" class="space-y-2">
+                                    <video
+                                        :src="getMediaUrl(message.telegram_data.video.file_id, 'video')"
+                                        controls
+                                        class="max-w-md rounded-lg"
+                                        @error="handleVideoError"
+                                    >
+                                        Ваш браузер не поддерживает видео.
+                                    </video>
+                                    <div class="text-xs text-muted-foreground">
+                                        <p>🎥 {{ message.telegram_data.video.file_name || 'Видео файл' }}</p>
+                                        <p v-if="message.telegram_data.video.file_size">Размер: {{ formatFileSize(message.telegram_data.video.file_size) }}</p>
+                                        <p v-if="message.telegram_data.video.duration">Длительность: {{ formatDuration(message.telegram_data.video.duration) }}</p>
+                                        <p v-if="message.telegram_data.caption" class="italic mt-1">{{ message.telegram_data.caption }}</p>
+                                    </div>
                                 </div>
-                                <div v-else-if="message.message_type === 'document' && message.telegram_data.document" class="text-xs text-muted-foreground">
-                                    <p class="inline-flex items-center gap-1">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <!-- Документ -->
+                                <div v-else-if="message.message_type === 'document' && message.telegram_data.document" class="space-y-2">
+                                    <div class="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                                        <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                         </svg>
-                                        📄 {{ message.telegram_data.document.file_name || 'Документ' }}
+                                        <div class="flex-1">
+                                            <p class="text-sm font-medium">{{ message.telegram_data.document.file_name || 'Документ' }}</p>
+                                            <p v-if="message.telegram_data.document.file_size" class="text-xs text-muted-foreground">
+                                                Размер: {{ formatFileSize(message.telegram_data.document.file_size) }}
+                                            </p>
+                                        </div>
+                                        <a
+                                            :href="getMediaUrl(message.telegram_data.document.file_id, 'document')"
+                                            target="_blank"
+                                            class="px-3 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+                                            download
+                                        >
+                                            Скачать
+                                        </a>
+                                    </div>
+                                    <p v-if="message.telegram_data.caption" class="text-xs text-muted-foreground italic">{{ message.telegram_data.caption }}</p>
+                                </div>
+                                <!-- Голосовое сообщение -->
+                                <div v-else-if="message.message_type === 'voice' && message.telegram_data.voice" class="space-y-2">
+                                    <audio
+                                        :src="getMediaUrl(message.telegram_data.voice.file_id, 'voice')"
+                                        controls
+                                        class="w-full"
+                                    >
+                                        Ваш браузер не поддерживает аудио.
+                                    </audio>
+                                    <p class="text-xs text-muted-foreground">
+                                        🎤 Голосовое сообщение
+                                        <span v-if="message.telegram_data.voice.duration"> • {{ formatDuration(message.telegram_data.voice.duration) }}</span>
                                     </p>
-                                    <p v-if="message.telegram_data.document.file_size">Размер: {{ formatFileSize(message.telegram_data.document.file_size) }}</p>
-                                    <p v-if="message.telegram_data.caption" class="italic mt-1">{{ message.telegram_data.caption }}</p>
                                 </div>
-                                <div v-else-if="message.message_type === 'voice' && message.telegram_data.voice" class="text-xs text-muted-foreground">
-                                    <p>🎤 Голосовое сообщение</p>
-                                    <p v-if="message.telegram_data.voice.duration">Длительность: {{ formatDuration(message.telegram_data.voice.duration) }}</p>
+                                <!-- Аудио -->
+                                <div v-else-if="message.message_type === 'audio' && message.telegram_data.audio" class="space-y-2">
+                                    <audio
+                                        :src="getMediaUrl(message.telegram_data.audio.file_id, 'audio')"
+                                        controls
+                                        class="w-full"
+                                    >
+                                        Ваш браузер не поддерживает аудио.
+                                    </audio>
+                                    <div class="text-xs text-muted-foreground">
+                                        <p>🎵 {{ message.telegram_data.audio.title || 'Аудио файл' }}</p>
+                                        <p v-if="message.telegram_data.audio.performer">Исполнитель: {{ message.telegram_data.audio.performer }}</p>
+                                        <p v-if="message.telegram_data.audio.duration">Длительность: {{ formatDuration(message.telegram_data.audio.duration) }}</p>
+                                    </div>
                                 </div>
-                                <div v-else-if="message.message_type === 'audio' && message.telegram_data.audio" class="text-xs text-muted-foreground">
-                                    <p>🎵 {{ message.telegram_data.audio.title || 'Аудио файл' }}</p>
-                                    <p v-if="message.telegram_data.audio.performer">Исполнитель: {{ message.telegram_data.audio.performer }}</p>
-                                    <p v-if="message.telegram_data.audio.duration">Длительность: {{ formatDuration(message.telegram_data.audio.duration) }}</p>
+                                <!-- Видеосообщение (круглое) -->
+                                <div v-else-if="message.message_type === 'video_note' && message.telegram_data.video_note" class="space-y-2">
+                                    <video
+                                        :src="getMediaUrl(message.telegram_data.video_note.file_id, 'video_note')"
+                                        controls
+                                        class="max-w-xs rounded-full"
+                                        @error="handleVideoError"
+                                    >
+                                        Ваш браузер не поддерживает видео.
+                                    </video>
+                                    <p class="text-xs text-muted-foreground">
+                                        📹 Видеосообщение (круглое)
+                                        <span v-if="message.telegram_data.video_note.duration"> • {{ formatDuration(message.telegram_data.video_note.duration) }}</span>
+                                    </p>
                                 </div>
-                                <div v-else-if="message.message_type === 'video_note' && message.telegram_data.video_note" class="text-xs text-muted-foreground">
-                                    <p>📹 Видеосообщение (круглое)</p>
-                                    <p v-if="message.telegram_data.video_note.duration">Длительность: {{ formatDuration(message.telegram_data.video_note.duration) }}</p>
+                                <!-- GIF/Анимация -->
+                                <div v-else-if="message.message_type === 'animation' && message.telegram_data.animation" class="space-y-2">
+                                    <img
+                                        :src="getMediaUrl(message.telegram_data.animation.file_id, 'animation')"
+                                        :alt="message.telegram_data.animation.file_name || 'GIF'"
+                                        class="max-w-md rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                        @click="openMediaViewer(getMediaUrl(message.telegram_data.animation.file_id, 'animation'), 'animation')"
+                                        @error="handleImageError"
+                                        loading="lazy"
+                                    />
+                                    <p class="text-xs text-muted-foreground">🎬 {{ message.telegram_data.animation.file_name || 'GIF/Анимация' }}</p>
                                 </div>
-                                <div v-else-if="message.message_type === 'animation' && message.telegram_data.animation" class="text-xs text-muted-foreground">
-                                    <p>🎬 GIF/Анимация: {{ message.telegram_data.animation.file_name || 'Анимация' }}</p>
-                                </div>
-                                <div v-else-if="message.message_type === 'sticker' && message.telegram_data.sticker" class="text-xs text-muted-foreground">
-                                    <p>😊 Стикер</p>
+                                <!-- Стикер -->
+                                <div v-else-if="message.message_type === 'sticker' && message.telegram_data.sticker" class="space-y-2">
+                                    <img
+                                        :src="getMediaUrl(message.telegram_data.sticker.file_id, 'sticker')"
+                                        alt="Стикер"
+                                        class="max-w-xs cursor-pointer hover:opacity-90 transition-opacity"
+                                        @click="openMediaViewer(getMediaUrl(message.telegram_data.sticker.file_id, 'sticker'), 'sticker')"
+                                        @error="handleImageError"
+                                        loading="lazy"
+                                    />
+                                    <p class="text-xs text-muted-foreground">😊 Стикер</p>
                                 </div>
                                 <div v-else-if="message.message_type === 'location' && message.telegram_data.location" class="text-xs text-muted-foreground">
                                     <a
@@ -274,6 +387,9 @@ const allBots = ref([])
 const managers = ref([])
 const showDialogueModal = ref(false)
 const selectedDialogue = ref(null)
+const showMediaViewer = ref(false)
+const currentMediaUrl = ref(null)
+const currentMediaType = ref(null)
 const filters = ref({
     bot_id: null,
     manager_id: null,
@@ -405,6 +521,36 @@ const formatDuration = (seconds) => {
 
 const handleImageError = (event) => {
     event.target.style.display = 'none'
+}
+
+const handleVideoError = (event) => {
+    console.error('Video load error:', event)
+}
+
+const getLargestPhotoFileId = (photos) => {
+    if (!photos || !Array.isArray(photos) || photos.length === 0) return null
+    // Telegram возвращает массив фото разных размеров, берем последнее (самое большое)
+    return photos[photos.length - 1].file_id
+}
+
+const getMediaUrl = (fileId, type) => {
+    if (!fileId || !selectedDialogue.value?.session?.id) return null
+    // Используем прокси endpoint для получения файла
+    // Для изображений и видео используем прямой URL через прокси
+    const baseUrl = window.location.origin
+    return `${baseUrl}/api/v1/manager-chats/file/${fileId}?session_id=${selectedDialogue.value.session.id}&redirect=1`
+}
+
+const openMediaViewer = (url, type) => {
+    currentMediaUrl.value = url
+    currentMediaType.value = type
+    showMediaViewer.value = true
+}
+
+const closeMediaViewer = () => {
+    showMediaViewer.value = false
+    currentMediaUrl.value = null
+    currentMediaType.value = null
 }
 
 onMounted(async () => {

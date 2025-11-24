@@ -91,12 +91,18 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('manager-chats', [\App\Http\Controllers\Api\ManagerChatController::class, 'index']);
             Route::get('manager-chats/managers', [\App\Http\Controllers\Api\ManagerChatController::class, 'getManagers']);
             Route::get('manager-chats/{sessionId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'show']);
+            Route::get('manager-chats/file/{fileId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'getFile']);
 
             // Settings
             Route::get('settings', [SettingsController::class, 'index']);
             Route::get('settings/group/{group}', [SettingsController::class, 'getGroup']);
             Route::get('settings/key/{key}', [SettingsController::class, 'getByKey']);
             Route::post('settings', [SettingsController::class, 'store']);
+
+            // Bot Menu Settings
+            Route::get('bot-menu-settings', [\App\Http\Controllers\Api\BotMenuSettingController::class, 'index']);
+            Route::get('bot-menu-settings/{botId}', [\App\Http\Controllers\Api\BotMenuSettingController::class, 'show']);
+            Route::put('bot-menu-settings/{botId}', [\App\Http\Controllers\Api\BotMenuSettingController::class, 'update']);
             Route::post('settings/bulk-update', [SettingsController::class, 'bulkUpdate']);
             Route::put('settings/{id}', [SettingsController::class, 'update']);
             Route::delete('settings/{id}', [SettingsController::class, 'destroy']);

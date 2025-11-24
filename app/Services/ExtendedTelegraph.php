@@ -1714,10 +1714,10 @@ class ExtendedTelegraph extends Telegraph
      *                                - 'type' => 'web_app' - показать веб-приложение
      *                                - 'type' => 'default' - использовать дефолтную кнопку
      * @param string|int|null $chatId ID чата (опционально, по умолчанию для всех чатов)
-     * @return TelegraphResponse
+     * @return array
      * @see https://core.telegram.org/bots/api#setchatmenubutton
      */
-    public function setChatMenuButton(?array $menuButton = null, $chatId = null): TelegraphResponse
+    public function setChatMenuButton(?array $menuButton = null, $chatId = null): array
     {
         $data = [];
 

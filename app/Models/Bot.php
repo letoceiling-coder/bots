@@ -40,4 +40,12 @@ class Bot extends Model
     {
         return $this->hasMany(BotUser::class);
     }
+
+    /**
+     * Настройки кнопки меню бота
+     */
+    public function menuSetting()
+    {
+        return $this->hasOne(BotMenuSetting::class);
+    }
 }
