@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Bot;
 use App\Models\BotSession;
 use App\Models\BotSessionStep;
+use App\Models\BotUser;
+use App\Models\ManagerChatMessage;
 use App\Services\BotSessionService;
 use App\Services\TelegramBotService;
 use Illuminate\Support\Facades\Log;
@@ -70,8 +72,42 @@ class BotMapHandler
             'is_command' => !empty($text) && str_starts_with($text, '/'),
         ]);
 
+        // Проверяем, является ли отправитель менеджером
+        $telegramUserId = (string)($userData['id'] ?? $chatId);
+        $isManager = BotUser::where('bot_id', $bot->id)
+            ->where('telegram_user_id', $telegramUserId)
+            ->where('role', 'manager')
+            ->exists();
+
+        // Если отправитель - менеджер, ищем активную сессию в режиме manager_chat
+        if ($isManager) {
+            $activeSession = BotSession::where('bot_id', $bot->id)
+                ->where('status', 'manager_chat')
+                ->latest('last_activity_at')
+                ->first();
+
+            if ($activeSession) {
+                $this->handleManagerChatMessage($bot, $activeSession, $message);
+                return;
+            }
+        }
+
         // Получаем или создаем сессию
         $session = $this->sessionService->getOrCreateSession($bot, (string)$chatId, $userData);
+
+        // Проверяем, находится ли сессия в режиме чата с менеджером
+        if ($session->status === 'manager_chat') {
+            // Команды обрабатываются отдельно, даже в режиме менеджера
+            if ($text && str_starts_with($text, '/')) {
+                // Обрабатываем команду выхода из режима менеджера
+                if (in_array($text, ['/exit', '/back', '/menu'])) {
+                    $this->exitManagerChat($bot, $session, $blocks);
+                    return;
+                }
+            }
+            $this->handleManagerChatMessage($bot, $session, $message);
+            return;
+        }
 
         // Загружаем карту бота
         $blocks = $bot->blocks ?? [];
@@ -629,6 +665,9 @@ class BotMapHandler
                     $botResponse = $methodData['text'] ?? 'Переключение на менеджера...';
                     $session->update(['status' => 'manager_chat']);
                     $result = $telegraph->message($botResponse)->send();
+                    
+                    // Отправляем уведомления всем менеджерам бота
+                    $this->notifyManagers($bot, $session, $methodData);
                     break;
 
                 default:
@@ -835,6 +874,486 @@ class BotMapHandler
             return 'edited_message';
         }
         return 'unknown';
+    }
+
+    /**
+     * Обработать сообщение в режиме чата с менеджером
+     */
+    protected function handleManagerChatMessage(Bot $bot, BotSession $session, array $message): void
+    {
+        $chatId = (string)($message['chat']['id'] ?? '');
+        $userData = $message['from'] ?? [];
+        $telegramUserId = (string)($userData['id'] ?? $chatId);
+        $messageId = $message['message_id'] ?? null;
+
+        // Извлекаем все возможные типы медиа
+        $text = $message['text'] ?? null;
+        $document = $message['document'] ?? null;
+        $photo = $message['photo'] ?? null;
+        $video = $message['video'] ?? null;
+        $audio = $message['audio'] ?? null;
+        $voice = $message['voice'] ?? null;
+        $videoNote = $message['video_note'] ?? null;
+        $animation = $message['animation'] ?? null;
+        $sticker = $message['sticker'] ?? null;
+        $contact = $message['contact'] ?? null;
+        $location = $message['location'] ?? null;
+        $venue = $message['venue'] ?? null;
+
+        // Определяем тип сообщения
+        $messageType = $this->detectMessageType($message);
+
+        Log::info('Handling manager chat message', [
+            'bot_id' => $bot->id,
+            'session_id' => $session->id,
+            'chat_id' => $chatId,
+            'telegram_user_id' => $telegramUserId,
+            'message_type' => $messageType,
+            'has_text' => !empty($text),
+            'has_document' => !empty($document),
+            'has_photo' => !empty($photo),
+            'has_video' => !empty($video),
+            'has_audio' => !empty($audio),
+            'has_voice' => !empty($voice),
+            'has_video_note' => !empty($videoNote),
+            'has_animation' => !empty($animation),
+            'has_sticker' => !empty($sticker),
+            'has_contact' => !empty($contact),
+            'has_location' => !empty($location),
+            'has_venue' => !empty($venue),
+        ]);
+
+        // Проверяем, является ли отправитель менеджером
+        $isManager = BotUser::where('bot_id', $bot->id)
+            ->where('telegram_user_id', $telegramUserId)
+            ->where('role', 'manager')
+            ->exists();
+
+        if ($isManager) {
+            // Сообщение от менеджера - пересылаем пользователю
+            $this->forwardMessageToUser($bot, $session, $message, $telegramUserId);
+        } else {
+            // Сообщение от пользователя - пересылаем всем менеджерам
+            $this->forwardMessageToManagers($bot, $session, $message);
+        }
+    }
+
+    /**
+     * Уведомить всех менеджеров о запросе связи
+     */
+    protected function notifyManagers(Bot $bot, BotSession $session, array $methodData = []): void
+    {
+        $managers = BotUser::where('bot_id', $bot->id)
+            ->where('role', 'manager')
+            ->get();
+
+        if ($managers->isEmpty()) {
+            Log::warning('No managers found for bot', [
+                'bot_id' => $bot->id,
+                'session_id' => $session->id,
+            ]);
+            return;
+        }
+
+        $userName = $session->first_name . ($session->last_name ? ' ' . $session->last_name : '');
+        $userName = $userName ?: ($session->username ? '@' . $session->username : "ID: {$session->chat_id}");
+        
+        $notificationText = "🔔 *Новый запрос на связь с менеджером*\n\n";
+        $notificationText .= "👤 Пользователь: {$userName}\n";
+        $notificationText .= "💬 Chat ID: `{$session->chat_id}`\n";
+        $notificationText .= "🆔 Telegram ID: `{$session->user_id}`\n";
+        $notificationText .= "📅 Время: " . now()->format('d.m.Y H:i') . "\n\n";
+        $notificationText .= "💡 *Как ответить:*\n";
+        $notificationText .= "1. Ответьте на это сообщение (Reply)\n";
+        $notificationText .= "2. Или просто напишите сообщение - оно будет переслано последнему активному пользователю\n\n";
+        $notificationText .= "Для выхода пользователя из режима менеджера он может использовать команду /exit";
+
+        $telegraph = $this->telegramService->bot($bot);
+
+        foreach ($managers as $manager) {
+            try {
+                $telegraph->chat($manager->chat_id)
+                    ->message($notificationText)
+                    ->parseMode('Markdown')
+                    ->send();
+
+                Log::info('Manager notified', [
+                    'bot_id' => $bot->id,
+                    'session_id' => $session->id,
+                    'manager_id' => $manager->id,
+                    'manager_chat_id' => $manager->chat_id,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to notify manager', [
+                    'bot_id' => $bot->id,
+                    'manager_id' => $manager->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Переслать сообщение от пользователя менеджерам
+     */
+    protected function forwardMessageToManagers(Bot $bot, BotSession $session, array $message): void
+    {
+        $managers = BotUser::where('bot_id', $bot->id)
+            ->where('role', 'manager')
+            ->get();
+
+        if ($managers->isEmpty()) {
+            Log::warning('No managers found for forwarding message', [
+                'bot_id' => $bot->id,
+                'session_id' => $session->id,
+            ]);
+            return;
+        }
+
+        $messageId = $message['message_id'] ?? null;
+        $userName = $session->first_name . ($session->last_name ? ' ' . $session->last_name : '');
+        $userName = $userName ?: ($session->username ? '@' . $session->username : "ID: {$session->chat_id}");
+
+        // Определяем тип сообщения и текст для сохранения
+        $messageType = $this->detectMessageType($message);
+        $messageText = $this->extractMessageText($message, $userName);
+
+        $telegraph = $this->telegramService->bot($bot);
+
+        foreach ($managers as $manager) {
+            try {
+                $forwardedMessageId = null;
+
+                // Пытаемся переслать сообщение через forwardMessage (работает для всех типов медиа)
+                try {
+                    $result = $telegraph->makeRequest('forwardMessage', [
+                        'chat_id' => $manager->chat_id,
+                        'from_chat_id' => $session->chat_id,
+                        'message_id' => $messageId,
+                    ]);
+                    
+                    if (isset($result['ok']) && $result['ok'] === true) {
+                        $forwardedMessageId = $result['result']['message_id'] ?? null;
+                    }
+                } catch (\Exception $e) {
+                    Log::debug('forwardMessage failed, trying alternative method', [
+                        'error' => $e->getMessage(),
+                        'message_type' => $messageType,
+                    ]);
+                }
+
+                // Если forwardMessage не сработал, отправляем текстовое описание
+                if (!$forwardedMessageId && $messageText) {
+                    $result = $telegraph->chat($manager->chat_id)
+                        ->message($messageText)
+                        ->parseMode('Markdown')
+                        ->send();
+                    $forwardedMessageId = $result['result']['message_id'] ?? null;
+                }
+
+                // Сохраняем сообщение в БД
+                ManagerChatMessage::create([
+                    'session_id' => $session->id,
+                    'bot_id' => $bot->id,
+                    'user_chat_id' => $session->chat_id,
+                    'manager_chat_id' => $manager->chat_id,
+                    'manager_telegram_user_id' => $manager->telegram_user_id,
+                    'direction' => 'user_to_manager',
+                    'message_text' => $messageText,
+                    'message_type' => $messageType,
+                    'telegram_message_id' => $forwardedMessageId,
+                    'telegram_data' => $message,
+                ]);
+
+                Log::info('Message forwarded to manager', [
+                    'bot_id' => $bot->id,
+                    'session_id' => $session->id,
+                    'manager_id' => $manager->id,
+                    'message_type' => $text ? 'text' : ($document ? 'document' : 'photo'),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to forward message to manager', [
+                    'bot_id' => $bot->id,
+                    'manager_id' => $manager->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Переслать сообщение от менеджера пользователю
+     */
+    protected function forwardMessageToUser(Bot $bot, BotSession $session, array $message, string $managerTelegramUserId): void
+    {
+        $messageId = $message['message_id'] ?? null;
+        $chatId = (string)($message['chat']['id'] ?? '');
+        $replyToMessage = $message['reply_to_message'] ?? null;
+        $text = $message['text'] ?? null;
+
+        // Находим менеджера
+        $manager = BotUser::where('bot_id', $bot->id)
+            ->where('telegram_user_id', $managerTelegramUserId)
+            ->where('role', 'manager')
+            ->first();
+
+        if (!$manager) {
+            Log::warning('Manager not found', [
+                'bot_id' => $bot->id,
+                'manager_telegram_user_id' => $managerTelegramUserId,
+            ]);
+            return;
+        }
+
+        // Если менеджер отвечает на сообщение, пытаемся найти сессию по reply_to_message
+        $targetSession = $session;
+        if ($replyToMessage) {
+            $replyText = $replyToMessage['text'] ?? '';
+            // Ищем chat_id в тексте уведомления
+            if (preg_match('/Chat ID: `(\d+)`/', $replyText, $matches)) {
+                $targetChatId = $matches[1];
+                $targetSession = BotSession::where('bot_id', $bot->id)
+                    ->where('chat_id', $targetChatId)
+                    ->where('status', 'manager_chat')
+                    ->latest('last_activity_at')
+                    ->first();
+                
+                if (!$targetSession) {
+                    $targetSession = $session; // Fallback на текущую сессию
+                }
+            }
+        }
+
+        // Если сессия не найдена, ищем последнюю активную сессию в режиме manager_chat
+        if (!$targetSession || $targetSession->status !== 'manager_chat') {
+            $targetSession = BotSession::where('bot_id', $bot->id)
+                ->where('status', 'manager_chat')
+                ->latest('last_activity_at')
+                ->first();
+        }
+
+        if (!$targetSession) {
+            Log::warning('No active manager chat session found', [
+                'bot_id' => $bot->id,
+                'manager_id' => $manager->id,
+            ]);
+            return;
+        }
+
+        $telegraph = $this->telegramService->bot($bot);
+        $forwardedMessageId = null;
+
+        // Определяем тип сообщения и текст для сохранения
+        $messageType = $this->detectMessageType($message);
+        $messageText = $this->extractMessageText($message);
+
+        try {
+            // Пытаемся переслать сообщение через forwardMessage (работает для всех типов медиа)
+            try {
+                $result = $telegraph->makeRequest('forwardMessage', [
+                    'chat_id' => $targetSession->chat_id,
+                    'from_chat_id' => $chatId,
+                    'message_id' => $messageId,
+                ]);
+                
+                if (isset($result['ok']) && $result['ok'] === true) {
+                    $forwardedMessageId = $result['result']['message_id'] ?? null;
+                }
+            } catch (\Exception $e) {
+                Log::debug('forwardMessage failed, trying alternative method', [
+                    'error' => $e->getMessage(),
+                    'message_type' => $messageType,
+                ]);
+            }
+
+            // Если forwardMessage не сработал и это текстовое сообщение, отправляем текст
+            if (!$forwardedMessageId && $text) {
+                $result = $telegraph->chat($targetSession->chat_id)
+                    ->message($text)
+                    ->send();
+                $forwardedMessageId = $result['result']['message_id'] ?? null;
+            }
+
+            // Обновляем активность сессии
+            $targetSession->touchActivity();
+
+            // Сохраняем сообщение в БД
+            ManagerChatMessage::create([
+                'session_id' => $targetSession->id,
+                'bot_id' => $bot->id,
+                'user_chat_id' => $targetSession->chat_id,
+                'manager_chat_id' => $manager->chat_id,
+                'manager_telegram_user_id' => $manager->telegram_user_id,
+                'direction' => 'manager_to_user',
+                'message_text' => $messageText,
+                'message_type' => $messageType,
+                'telegram_message_id' => $forwardedMessageId,
+                'telegram_data' => $message,
+            ]);
+
+            Log::info('Message forwarded to user', [
+                'bot_id' => $bot->id,
+                'session_id' => $targetSession->id,
+                'manager_id' => $manager->id,
+                'message_type' => $messageType,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to forward message to user', [
+                'bot_id' => $bot->id,
+                'session_id' => $targetSession->id,
+                'manager_id' => $manager->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Выйти из режима чата с менеджером
+     */
+    protected function exitManagerChat(Bot $bot, BotSession $session, array $blocks): void
+    {
+        Log::info('Exiting manager chat mode', [
+            'bot_id' => $bot->id,
+            'session_id' => $session->id,
+        ]);
+
+        // Возвращаем сессию в активный статус
+        $session->update([
+            'status' => 'active',
+            'current_block_id' => null, // Сбрасываем текущий блок
+        ]);
+
+        $telegraph = $this->telegramService->bot($bot);
+
+        // Отправляем сообщение пользователю
+        $telegraph->chat($session->chat_id)
+            ->message("✅ Вы вышли из режима чата с менеджером.\n\nИспользуйте /start для возврата в главное меню.")
+            ->send();
+
+        // Уведомляем менеджеров
+        $managers = BotUser::where('bot_id', $bot->id)
+            ->where('role', 'manager')
+            ->get();
+
+        $userName = $session->first_name . ($session->last_name ? ' ' . $session->last_name : '');
+        $userName = $userName ?: ($session->username ? '@' . $session->username : "ID: {$session->chat_id}");
+
+        foreach ($managers as $manager) {
+            try {
+                $telegraph->chat($manager->chat_id)
+                    ->message("ℹ️ Пользователь {$userName} вышел из режима чата с менеджером.")
+                    ->send();
+            } catch (\Exception $e) {
+                Log::error('Failed to notify manager about exit', [
+                    'bot_id' => $bot->id,
+                    'manager_id' => $manager->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Определить тип сообщения
+     */
+    protected function detectMessageType(array $message): string
+    {
+        if (isset($message['text'])) {
+            return 'text';
+        } elseif (isset($message['photo'])) {
+            return 'photo';
+        } elseif (isset($message['video'])) {
+            return 'video';
+        } elseif (isset($message['document'])) {
+            return 'document';
+        } elseif (isset($message['audio'])) {
+            return 'audio';
+        } elseif (isset($message['voice'])) {
+            return 'voice';
+        } elseif (isset($message['video_note'])) {
+            return 'video_note';
+        } elseif (isset($message['animation'])) {
+            return 'animation';
+        } elseif (isset($message['sticker'])) {
+            return 'sticker';
+        } elseif (isset($message['contact'])) {
+            return 'contact';
+        } elseif (isset($message['location'])) {
+            return 'location';
+        } elseif (isset($message['venue'])) {
+            return 'venue';
+        }
+        return 'unknown';
+    }
+
+    /**
+     * Извлечь текстовое представление сообщения для сохранения в БД
+     */
+    protected function extractMessageText(array $message, ?string $userName = null): ?string
+    {
+        $text = $message['text'] ?? null;
+        
+        if ($text) {
+            if ($userName) {
+                return "💬 *Сообщение от пользователя:* {$userName}\n\n{$text}";
+            }
+            return $text;
+        }
+
+        // Для медиа-файлов создаем текстовое описание
+        $caption = $message['caption'] ?? null;
+        $description = '';
+
+        if (isset($message['photo'])) {
+            $description = "📷 *Фото";
+        } elseif (isset($message['video'])) {
+            $description = "🎥 *Видео";
+        } elseif (isset($message['document'])) {
+            $fileName = $message['document']['file_name'] ?? 'Документ';
+            $description = "📄 *Документ:* {$fileName}";
+        } elseif (isset($message['audio'])) {
+            $title = $message['audio']['title'] ?? 'Аудио';
+            $description = "🎵 *Аудио:* {$title}";
+        } elseif (isset($message['voice'])) {
+            $duration = $message['voice']['duration'] ?? 0;
+            $description = "🎤 *Голосовое сообщение* ({$duration} сек)";
+        } elseif (isset($message['video_note'])) {
+            $duration = $message['video_note']['duration'] ?? 0;
+            $description = "🎬 *Видео-кружок* ({$duration} сек)";
+        } elseif (isset($message['animation'])) {
+            $description = "🎞️ *Анимация/GIF";
+        } elseif (isset($message['sticker'])) {
+            $emoji = $message['sticker']['emoji'] ?? '';
+            $description = "😊 *Стикер* {$emoji}";
+        } elseif (isset($message['contact'])) {
+            $firstName = $message['contact']['first_name'] ?? '';
+            $phone = $message['contact']['phone_number'] ?? '';
+            $description = "👤 *Контакт:* {$firstName}\n📞 Телефон: {$phone}";
+        } elseif (isset($message['location'])) {
+            $lat = $message['location']['latitude'] ?? 0;
+            $lon = $message['location']['longitude'] ?? 0;
+            $description = "📍 *Локация*\nКоординаты: {$lat}, {$lon}";
+        } elseif (isset($message['venue'])) {
+            $title = $message['venue']['title'] ?? '';
+            $address = $message['venue']['address'] ?? '';
+            $description = "🏢 *Место:* {$title}\n📍 Адрес: {$address}";
+        }
+
+        if ($description) {
+            if ($userName) {
+                $description .= " от пользователя:* {$userName}";
+            } else {
+                $description .= '*';
+            }
+            
+            if ($caption) {
+                $description .= "\n\n{$caption}";
+            }
+            
+            return $description;
+        }
+
+        return null;
     }
 }
 

@@ -17,6 +17,12 @@ class AdminMenu
     {
         $menu = collect([
             [
+                'title' => 'Документация',
+                'route' => 'admin.documentation',
+                'icon' => 'book',
+                'roles' => ['admin', 'manager', 'user'],
+            ],
+            [
                 'title' => 'Панель управления',
                 'route' => 'admin.dashboard',
                 'icon' => 'home',

@@ -68,6 +68,14 @@ class BotSession extends Model
     }
 
     /**
+     * Сообщения чата с менеджером
+     */
+    public function managerChatMessages(): HasMany
+    {
+        return $this->hasMany(ManagerChatMessage::class, 'session_id');
+    }
+
+    /**
      * Получить значение данных по ключу
      */
     public function getDataValue(string $key): ?string
