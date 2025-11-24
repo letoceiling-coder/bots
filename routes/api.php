@@ -33,12 +33,14 @@ Route::match(['GET', 'POST'], '/telegram/webhook/{bot_id}', [TelegramWebhookCont
     ->name('telegram.webhook')
     ->middleware('throttle:60,1');
 
-// Публичный маршрут для получения файлов из Telegram (прокси)
+// Публичный маршрут для получения файлов из Telegram (прокси) - ДО auth:sanctum
 // Используется для отображения медиа в диалогах менеджеров
 // Используем where для разрешения всех символов в file_id (включая слэши и специальные символы)
-Route::match(['GET', 'OPTIONS'], 'manager-chats/file/{fileId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'getFile'])
-    ->where('fileId', '.+')
-    ->middleware('throttle:100,1');
+Route::prefix('v1')->group(function () {
+    Route::match(['GET', 'OPTIONS'], 'manager-chats/file/{fileId}', [\App\Http\Controllers\Api\ManagerChatController::class, 'getFile'])
+        ->where('fileId', '.+')
+        ->middleware('throttle:100,1');
+});
 
 // Защищённые роуты
 Route::middleware('auth:sanctum')->group(function () {
