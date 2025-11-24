@@ -1,5 +1,9 @@
 <template>
     <div class="space-y-6">
+        <div v-if="loading" class="text-center py-8">
+            <p class="text-muted-foreground">Загрузка настроек...</p>
+        </div>
+        <template v-else>
         <div class="flex items-center justify-between">
             <h2 class="text-2xl font-bold">Настройки методов блоков</h2>
             <div class="flex gap-2">
@@ -77,26 +81,53 @@
                 </div>
             </div>
         </div>
+        </template>
     </div>
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { blockMethodsManager } from '../../utils/BlockMethodsManager.js'
 
 export default {
     name: 'BlockMethodsSettings',
     setup() {
-        const methods = ref({})
+        const methods = reactive({})
+        const loading = ref(true)
+        const updateTrigger = ref(0) // Триггер для принудительного обновления
 
         // Загружаем методы при монтировании
-        onMounted(() => {
-            methods.value = blockMethodsManager.getAllMethods()
+        onMounted(async () => {
+            // Ждем загрузки настроек из БД
+            if (!blockMethodsManager.settingsLoaded) {
+                await blockMethodsManager.loadSettingsFromAPI()
+            }
+            // Копируем методы в реактивный объект
+            const allMethods = blockMethodsManager.getAllMethods()
+            Object.keys(allMethods).forEach(key => {
+                methods[key] = { ...allMethods[key] }
+            })
+            loading.value = false
         })
 
-        // Группируем методы для отображения
+        // Группируем методы для отображения (зависит от methods и updateTrigger для реактивности)
         const methodGroups = computed(() => {
-            const grouped = blockMethodsManager.getGroupedMethods(false)
+            // Используем updateTrigger для принудительного обновления
+            updateTrigger.value
+            
+            // Используем текущие методы из реактивного объекта methods
+            const grouped = {}
+            
+            // Группируем методы из текущего состояния
+            Object.values(methods).forEach(method => {
+                if (method && method.group) {
+                    if (!grouped[method.group]) {
+                        grouped[method.group] = []
+                    }
+                    grouped[method.group].push(method)
+                }
+            })
+            
             const groupLabels = {
                 messages: 'Отправка сообщений',
                 media: 'Медиа',
@@ -115,36 +146,134 @@ export default {
         })
 
         // Переключить метод
-        const toggleMethod = (methodValue) => {
-            blockMethodsManager.toggleMethod(methodValue)
-            // Обновляем локальное состояние
-            methods.value = { ...blockMethodsManager.getAllMethods() }
+        const toggleMethod = async (methodValue) => {
+            try {
+                // Сначала обновляем локальное состояние для мгновенной реакции UI
+                if (methods[methodValue]) {
+                    methods[methodValue].enabled = !methods[methodValue].enabled
+                    updateTrigger.value++ // Принудительно обновляем computed
+                }
+                
+                // Затем сохраняем в БД
+                await blockMethodsManager.toggleMethod(methodValue)
+                
+                // Синхронизируем с менеджером на случай, если что-то пошло не так
+                const allMethods = blockMethodsManager.getAllMethods()
+                if (allMethods[methodValue]) {
+                    methods[methodValue].enabled = allMethods[methodValue].enabled
+                    updateTrigger.value++
+                }
+            } catch (error) {
+                console.error('Ошибка при переключении метода:', error)
+                // Откатываем изменение при ошибке
+                if (methods[methodValue]) {
+                    methods[methodValue].enabled = !methods[methodValue].enabled
+                    updateTrigger.value++
+                }
+            }
         }
 
         // Переключить группу методов
-        const toggleGroup = (groupKey, enabled) => {
-            blockMethodsManager.setGroupEnabled(groupKey, enabled)
-            // Обновляем локальное состояние
-            methods.value = { ...blockMethodsManager.getAllMethods() }
+        const toggleGroup = async (groupKey, enabled) => {
+            try {
+                // Сначала обновляем локальное состояние
+                Object.values(methods).forEach(method => {
+                    if (method && method.group === groupKey) {
+                        method.enabled = enabled
+                    }
+                })
+                updateTrigger.value++
+                
+                // Затем сохраняем в БД
+                await blockMethodsManager.setGroupEnabled(groupKey, enabled)
+                
+                // Синхронизируем с менеджером
+                const allMethods = blockMethodsManager.getAllMethods()
+                Object.keys(allMethods).forEach(key => {
+                    if (allMethods[key].group === groupKey) {
+                        methods[key] = { ...allMethods[key] }
+                    }
+                })
+                updateTrigger.value++
+            } catch (error) {
+                console.error('Ошибка при переключении группы:', error)
+            }
         }
 
         // Включить все методы
-        const enableAll = () => {
-            blockMethodsManager.enableAll()
-            methods.value = { ...blockMethodsManager.getAllMethods() }
+        const enableAll = async () => {
+            try {
+                // Сначала обновляем локальное состояние
+                Object.values(methods).forEach(method => {
+                    if (method) {
+                        method.enabled = true
+                    }
+                })
+                updateTrigger.value++
+                
+                // Затем сохраняем в БД
+                await blockMethodsManager.enableAll()
+                
+                // Синхронизируем с менеджером
+                const allMethods = blockMethodsManager.getAllMethods()
+                Object.keys(allMethods).forEach(key => {
+                    methods[key] = { ...allMethods[key] }
+                })
+                updateTrigger.value++
+            } catch (error) {
+                console.error('Ошибка при включении всех методов:', error)
+            }
         }
 
         // Отключить все методы
-        const disableAll = () => {
-            blockMethodsManager.disableAll()
-            methods.value = { ...blockMethodsManager.getAllMethods() }
+        const disableAll = async () => {
+            try {
+                // Сначала обновляем локальное состояние
+                Object.values(methods).forEach(method => {
+                    if (method) {
+                        method.enabled = false
+                    }
+                })
+                updateTrigger.value++
+                
+                // Затем сохраняем в БД
+                await blockMethodsManager.disableAll()
+                
+                // Синхронизируем с менеджером
+                const allMethods = blockMethodsManager.getAllMethods()
+                Object.keys(allMethods).forEach(key => {
+                    methods[key] = { ...allMethods[key] }
+                })
+                updateTrigger.value++
+            } catch (error) {
+                console.error('Ошибка при отключении всех методов:', error)
+            }
         }
 
         // Сбросить настройки
-        const resetSettings = () => {
+        const resetSettings = async () => {
             if (confirm('Вы уверены, что хотите сбросить все настройки методов к значениям по умолчанию?')) {
-                blockMethodsManager.resetSettings()
-                methods.value = { ...blockMethodsManager.getAllMethods() }
+                try {
+                    // Сначала обновляем локальное состояние
+                    Object.values(methods).forEach(method => {
+                        if (method) {
+                            method.enabled = true
+                        }
+                    })
+                    updateTrigger.value++
+                    
+                    // Затем сохраняем в БД
+                    await blockMethodsManager.resetSettings()
+                    
+                    // Синхронизируем с менеджером
+                    const allMethods = blockMethodsManager.getAllMethods()
+                    Object.keys(allMethods).forEach(key => {
+                        methods[key] = { ...allMethods[key] }
+                    })
+                    updateTrigger.value++
+                } catch (error) {
+                    console.error('Ошибка при сбросе настроек:', error)
+                }
             }
         }
 
@@ -154,7 +283,8 @@ export default {
             toggleGroup,
             enableAll,
             disableAll,
-            resetSettings
+            resetSettings,
+            loading
         }
     }
 }

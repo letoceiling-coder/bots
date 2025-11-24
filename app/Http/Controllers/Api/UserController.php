@@ -47,8 +47,15 @@ class UserController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
-        if ($request->has('roles')) {
+        // Назначаем роли: если роли указаны - используем их, иначе назначаем роль "user" по умолчанию
+        if ($request->has('roles') && !empty($request->roles)) {
             $user->roles()->sync($request->roles);
+        } else {
+            // Назначаем роль "user" по умолчанию
+            $userRole = Role::where('slug', 'user')->first();
+            if ($userRole) {
+                $user->roles()->sync([$userRole->id]);
+            }
         }
 
         return response()->json([

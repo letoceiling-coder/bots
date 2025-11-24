@@ -6,7 +6,7 @@
                 <p class="text-muted-foreground mt-1">Управление пользователями системы</p>
             </div>
             <button
-                @click="showCreateModal = true"
+                @click="openCreateModal"
                 class="h-11 px-6 bg-accent/10 backdrop-blur-xl text-accent border border-accent/40 hover:bg-accent/20 rounded-2xl shadow-lg shadow-accent/10 inline-flex items-center justify-center gap-2"
             >
                 <span>+</span>
@@ -327,6 +327,24 @@ export default {
             }
         }
 
+        const openCreateModal = async () => {
+            // Убеждаемся, что роли загружены
+            if (allRoles.value.length === 0) {
+                await fetchRoles()
+            }
+            
+            // Находим роль "user" и устанавливаем её по умолчанию
+            const userRole = allRoles.value.find(role => role.slug === 'user')
+            form.value = {
+                id: null,
+                name: '',
+                email: '',
+                password: '',
+                roles: userRole ? [userRole.id] : []
+            }
+            showCreateModal.value = true
+        }
+
         const closeModal = () => {
             showCreateModal.value = false
             showEditModal.value = false
@@ -353,6 +371,7 @@ export default {
             showEditModal,
             form,
             currentUserId,
+            openCreateModal,
             editUser,
             deleteUser,
             saveUser,

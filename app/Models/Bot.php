@@ -32,4 +32,12 @@ class Bot extends Model
     {
         return $this->hasMany(BotSession::class);
     }
+
+    /**
+     * Пользователи бота
+     */
+    public function botUsers()
+    {
+        return $this->hasMany(BotUser::class);
+    }
 }

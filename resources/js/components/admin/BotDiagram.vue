@@ -26,6 +26,7 @@
                 :height="svgHeight"
             >
                 <defs>
+                    <!-- Маркер для обычных связей (nextBlockId) -->
                     <marker
                         id="arrowhead"
                         markerWidth="8"
@@ -41,7 +42,40 @@
                             opacity="0.7"
                         />
                     </marker>
+                    <!-- Маркер для связей от кнопок (target_block_id) -->
+                    <marker
+                        id="arrowhead-button"
+                        markerWidth="8"
+                        markerHeight="8"
+                        refX="7"
+                        refY="2.5"
+                        orient="auto"
+                        markerUnits="userSpaceOnUse"
+                    >
+                        <path
+                            d="M0,0 L0,5 L7,2.5 z"
+                            fill="#eab308"
+                            opacity="0.8"
+                        />
+                    </marker>
+                    <!-- Маркер для невалидных связей (target_block_id указывает на несуществующий блок) -->
+                    <marker
+                        id="arrowhead-error"
+                        markerWidth="8"
+                        markerHeight="8"
+                        refX="7"
+                        refY="2.5"
+                        orient="auto"
+                        markerUnits="userSpaceOnUse"
+                    >
+                        <path
+                            d="M0,0 L0,5 L7,2.5 z"
+                            fill="#ef4444"
+                            opacity="0.8"
+                        />
+                    </marker>
                 </defs>
+                <!-- Обычные связи (nextBlockId) -->
                 <path
                     v-for="connection in connections"
                     :key="`${connection.from}-${connection.to}`"
@@ -53,6 +87,21 @@
                     class="transition-all"
                     opacity="0.6"
                     style="filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));"
+                />
+                <!-- Связи от кнопок (target_block_id) -->
+                <path
+                    v-for="connection in filteredButtonConnections"
+                    :key="`button-${connection.fromBlock.id}-${connection.rowIndex}-${connection.btnIndex}-${connection.toBlock?.id || 'invalid'}`"
+                    :d="connection.path"
+                    :stroke="connection.isValid ? '#eab308' : '#ef4444'"
+                    stroke-width="2"
+                    fill="none"
+                    :marker-end="connection.isValid ? 'url(#arrowhead-button)' : 'url(#arrowhead-error)'"
+                    class="button-connection transition-all"
+                    :class="{ 'opacity-50': !connection.isValid }"
+                    :opacity="connection.isValid ? 0.7 : 0.5"
+                    :style="connection.isValid ? 'filter: drop-shadow(0 1px 1px rgba(234, 179, 8, 0.3));' : 'stroke-dasharray: 5,5;'"
+                    :title="connection.tooltip"
                 />
             </svg>
 
@@ -109,6 +158,10 @@ export default {
         panOffset: {
             type: Object,
             default: () => ({ x: 0, y: 0 })
+        },
+        showButtonConnections: {
+            type: Boolean,
+            default: true
         }
     },
     emits: ['block-move', 'block-click', 'block-settings', 'block-delete', 'zoom-change', 'pan-change'],
@@ -133,6 +186,10 @@ export default {
         // Константы размеров блока
         const BLOCK_WIDTH = 120
         const BLOCK_HEIGHT = 100
+        const HEADER_HEIGHT = 25 // Высота заголовка блока
+        const ROW_HEIGHT = 24 // Высота ряда кнопок (h-6 = 24px)
+        const BUTTON_HEIGHT = 24 // Высота одной кнопки
+        const BUTTON_SPACING = 4 // Отступ между кнопками
 
         // Вычисляем связи между блоками с правильными координатами и избеганием пересечений
         const connections = computed(() => {
@@ -226,6 +283,160 @@ export default {
             })
 
             return conns
+        })
+
+        // Вычисляем связи от кнопок inline-клавиатуры к блокам
+        const buttonConnections = computed(() => {
+            const buttonConns = []
+            const connectionsByTarget = new Map() // Группируем по целевому блоку для избежания пересечений
+            
+            // Проходим по всем блокам
+            props.blocks.forEach(block => {
+                // Ищем блоки с inlineKeyboard
+                if (block.method === 'inlineKeyboard') {
+                    const methodData = block.methodData || block.method_data || {}
+                    const inlineKeyboard = methodData.inline_keyboard || []
+                    
+                    if (Array.isArray(inlineKeyboard) && inlineKeyboard.length > 0) {
+                        // Проходим по всем рядам кнопок
+                        inlineKeyboard.forEach((row, rowIndex) => {
+                            if (Array.isArray(row)) {
+                                // Проходим по всем кнопкам в ряду
+                                row.forEach((button, btnIndex) => {
+                                    // Если у кнопки есть target_block_id
+                                    if (button && button.target_block_id) {
+                                        // Находим целевой блок
+                                        const targetBlock = props.blocks.find(b => b.id === button.target_block_id)
+                                        
+                                        const isValid = !!targetBlock
+                                        
+                                        // Вычисляем координаты выхода от кнопки
+                                        const fromX = (block.x || 0) + BLOCK_WIDTH
+                                        // Вычисляем Y координату: верх блока + заголовок + позиция ряда + центр кнопки
+                                        // Учитываем отступы между рядами (BUTTON_SPACING)
+                                        const fromY = (block.y || 0) + 
+                                                     HEADER_HEIGHT + 
+                                                     (rowIndex * (ROW_HEIGHT + BUTTON_SPACING)) + 
+                                                     (BUTTON_HEIGHT / 2)
+                                        
+                                        // Координаты входа в целевой блок
+                                        let toX = 0
+                                        let toY = 0
+                                        
+                                        if (targetBlock) {
+                                            toX = targetBlock.x || 0
+                                            toY = (targetBlock.y || 0) + BLOCK_HEIGHT / 2
+                                        } else {
+                                            // Если блок не найден, используем координаты из target_block_id как fallback
+                                            // (можно использовать координаты последнего блока или центр диаграммы)
+                                            const lastBlock = props.blocks[props.blocks.length - 1]
+                                            if (lastBlock) {
+                                                toX = (lastBlock.x || 0) + BLOCK_WIDTH + 100
+                                                toY = (lastBlock.y || 0) + BLOCK_HEIGHT / 2
+                                            } else {
+                                                toX = fromX + 200
+                                                toY = fromY
+                                            }
+                                        }
+                                        
+                                        // Группируем связи по целевому блоку для избежания пересечений
+                                        const targetKey = targetBlock?.id || 'invalid'
+                                        if (!connectionsByTarget.has(targetKey)) {
+                                            connectionsByTarget.set(targetKey, [])
+                                        }
+                                        
+                                        connectionsByTarget.get(targetKey).push({
+                                            fromBlock: block,
+                                            toBlock: targetBlock,
+                                            button: button,
+                                            rowIndex: rowIndex,
+                                            btnIndex: btnIndex,
+                                            fromX: fromX,
+                                            fromY: fromY,
+                                            toX: toX,
+                                            toY: toY,
+                                            isValid: isValid
+                                        })
+                                    }
+                                })
+                            }
+                        })
+                    }
+                }
+            })
+            
+            // Обрабатываем каждую группу связей к одному целевому блоку
+            connectionsByTarget.forEach((group, targetKey) => {
+                // Сортируем по позиции кнопки (сверху вниз)
+                group.sort((a, b) => {
+                    const aY = a.fromY
+                    const bY = b.fromY
+                    return aY - bY
+                })
+                
+                // Для каждой связи вычисляем смещение по Y, чтобы избежать пересечений
+                group.forEach((connection, index) => {
+                    const fromX = connection.fromX
+                    let fromY = connection.fromY
+                    const toX = connection.toX
+                    let toY = connection.toY
+                    
+                    // Если несколько связей к одному блоку, распределяем точки входа по вертикали
+                    if (group.length > 1 && connection.isValid) {
+                        const totalConnections = group.length
+                        const spacing = Math.min(15, BLOCK_HEIGHT / (totalConnections + 1))
+                        const offset = (index - (totalConnections - 1) / 2) * spacing
+                        toY = toY + offset
+                    }
+                    
+                    // Вычисляем расстояние между блоками
+                    const distance = toX - fromX
+                    
+                    // Вертикальное расстояние между блоками
+                    const verticalDistance = Math.abs(toY - fromY)
+                    
+                    // Вычисляем контрольные точки для плавной кривой
+                    const horizontalOffset = Math.min(distance * 0.4, 80)
+                    const verticalOffset = Math.max(verticalDistance * 0.3, 15) + (index * 8)
+                    
+                    const controlX1 = fromX + horizontalOffset
+                    const controlY1 = fromY + (toY > fromY ? verticalOffset : -verticalOffset)
+                    const controlX2 = toX - horizontalOffset
+                    const controlY2 = toY - (toY > fromY ? verticalOffset : -verticalOffset)
+                    
+                    const path = `M ${fromX} ${fromY} 
+                                 C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toX} ${toY}`
+                    
+                    // Формируем tooltip
+                    const buttonText = connection.button.text || connection.button.callback_data || 'Кнопка'
+                    const targetLabel = connection.toBlock?.label || connection.toBlock?.id || 'Не найден'
+                    const tooltip = connection.isValid 
+                        ? `Кнопка: "${buttonText}" → Блок: "${targetLabel}"`
+                        : `Кнопка: "${buttonText}" → Блок не найден (ID: ${connection.button.target_block_id})`
+                    
+                    buttonConns.push({
+                        fromBlock: connection.fromBlock,
+                        toBlock: connection.toBlock,
+                        button: connection.button,
+                        rowIndex: connection.rowIndex,
+                        btnIndex: connection.btnIndex,
+                        fromX: fromX,
+                        fromY: fromY,
+                        toX: toX,
+                        toY: toY,
+                        path: path,
+                        isValid: connection.isValid,
+                        tooltip: tooltip
+                    })
+                })
+            })
+            
+            return buttonConns
+        })
+
+        // Фильтрованные связи от кнопок (с учетом настройки показа)
+        const filteredButtonConnections = computed(() => {
+            return props.showButtonConnections ? buttonConnections.value : []
         })
 
         // Размеры SVG для правильного отображения
@@ -397,6 +608,8 @@ export default {
             diagramContainer,
             containerRef,
             connections,
+            buttonConnections,
+            filteredButtonConnections,
             svgWidth,
             svgHeight,
             handleBlockMove,
@@ -450,6 +663,17 @@ export default {
     overflow: visible;
     /* Убеждаемся, что контейнер может расширяться по обеим осям */
     flex-shrink: 0;
+}
+
+/* Стили для связей от кнопок */
+.button-connection {
+    cursor: pointer;
+    transition: opacity 0.2s, stroke-width 0.2s;
+}
+
+.button-connection:hover {
+    opacity: 1 !important;
+    stroke-width: 3;
 }
 </style>
 

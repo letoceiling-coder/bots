@@ -141,6 +141,7 @@
             :blocks="blocks"
             :zoom="zoom"
             :pan-offset="panOffset"
+            :show-button-connections="true"
             @block-move="handleBlockMove"
             @block-click="handleBlockClick"
             @block-settings="handleBlockSettings"

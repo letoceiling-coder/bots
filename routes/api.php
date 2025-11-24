@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\BotController;
 use App\Http\Controllers\Api\BotSessionController;
+use App\Http\Controllers\Api\BotUserController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\v1\FolderController;
@@ -76,6 +77,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('bot-sessions', [BotSessionController::class, 'index']);
             Route::get('bot-sessions/statistics', [BotSessionController::class, 'statistics']);
             Route::get('bot-sessions/{id}', [BotSessionController::class, 'show']);
+            
+            // Bot Users
+            Route::get('bot-users', [BotUserController::class, 'index']);
+            Route::get('bots/{botId}/users', [BotUserController::class, 'getBotUsers']);
+            Route::apiResource('bot-users', BotUserController::class)->except(['index']);
 
             // Settings
             Route::get('settings', [SettingsController::class, 'index']);
@@ -85,6 +91,10 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('settings/bulk-update', [SettingsController::class, 'bulkUpdate']);
             Route::put('settings/{id}', [SettingsController::class, 'update']);
             Route::delete('settings/{id}', [SettingsController::class, 'destroy']);
+            
+            // Block Methods Settings
+            Route::get('settings/block-methods', [SettingsController::class, 'getBlockMethods']);
+            Route::post('settings/block-methods', [SettingsController::class, 'updateBlockMethods']);
         });
     });
 });

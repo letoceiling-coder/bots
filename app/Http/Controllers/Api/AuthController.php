@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -35,6 +36,12 @@ class AuthController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+
+        // Назначаем роль "user" по умолчанию при регистрации
+        $userRole = Role::where('slug', 'user')->first();
+        if ($userRole) {
+            $user->roles()->attach($userRole->id);
+        }
 
         $token = $user->createToken('auth_token')->plainTextToken;
 

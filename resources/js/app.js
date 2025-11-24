@@ -258,6 +258,12 @@ const routes = [
                 name: 'admin.bot-sessions',
                 component: () => import('./pages/admin/BotSessions.vue'),
             },
+            {
+                path: 'bot-users',
+                name: 'admin.bot-users',
+                component: () => import('./pages/admin/BotUsers.vue'),
+                meta: { requiresAuth: true, requiresRole: ['admin', 'manager'] },
+            },
         ],
     },
 ];

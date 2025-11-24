@@ -230,6 +230,7 @@ const getGroupLabel = (group) => {
         email: 'Email',
         system: 'Система',
         bot: 'Боты',
+        block_methods: 'Методы блоков',
     }
     return labels[group] || group.charAt(0).toUpperCase() + group.slice(1)
 }
@@ -256,14 +257,17 @@ const loadSettings = async () => {
         const data = await response.json()
         
         // Преобразуем объект сгруппированных настроек в плоский массив
+        // Исключаем настройки методов блоков (block_methods), так как у них есть отдельный компонент
         const flatSettings = []
-        Object.values(data.data || {}).forEach(groupSettings => {
-            groupSettings.forEach(setting => {
-                flatSettings.push({
-                    ...setting,
-                    _changed: false,
+        Object.entries(data.data || {}).forEach(([group, groupSettings]) => {
+            if (group !== 'block_methods') {
+                groupSettings.forEach(setting => {
+                    flatSettings.push({
+                        ...setting,
+                        _changed: false,
+                    })
                 })
-            })
+            }
         })
         settings.value = flatSettings
         changedSettings.value.clear()

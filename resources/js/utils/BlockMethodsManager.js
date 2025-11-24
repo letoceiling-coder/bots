@@ -197,8 +197,10 @@ export class BlockMethodsManager {
             special: 'Специальные функции'
         }
 
-        // Загружаем настройки из localStorage при инициализации
-        this.loadSettings()
+        // Флаг загрузки настроек
+        this.settingsLoaded = false
+        // Загружаем настройки из БД при инициализации (асинхронно)
+        this.loadSettingsFromAPI()
     }
 
     /**
@@ -251,10 +253,10 @@ export class BlockMethodsManager {
      * Включить метод
      * @param {string} methodValue - значение метода
      */
-    enableMethod(methodValue) {
+    async enableMethod(methodValue) {
         if (this.methods[methodValue]) {
             this.methods[methodValue].enabled = true
-            this.saveSettings()
+            await this.saveSettings()
         }
     }
 
@@ -262,10 +264,10 @@ export class BlockMethodsManager {
      * Отключить метод
      * @param {string} methodValue - значение метода
      */
-    disableMethod(methodValue) {
+    async disableMethod(methodValue) {
         if (this.methods[methodValue]) {
             this.methods[methodValue].enabled = false
-            this.saveSettings()
+            await this.saveSettings()
         }
     }
 
@@ -274,10 +276,10 @@ export class BlockMethodsManager {
      * @param {string} methodValue - значение метода
      * @returns {boolean} Новое состояние (включен/выключен)
      */
-    toggleMethod(methodValue) {
+    async toggleMethod(methodValue) {
         if (this.methods[methodValue]) {
             this.methods[methodValue].enabled = !this.methods[methodValue].enabled
-            this.saveSettings()
+            await this.saveSettings()
             return this.methods[methodValue].enabled
         }
         return false
@@ -311,21 +313,21 @@ export class BlockMethodsManager {
     /**
      * Включить все методы
      */
-    enableAll() {
+    async enableAll() {
         Object.values(this.methods).forEach(method => {
             method.enabled = true
         })
-        this.saveSettings()
+        await this.saveSettings()
     }
 
     /**
      * Отключить все методы
      */
-    disableAll() {
+    async disableAll() {
         Object.values(this.methods).forEach(method => {
             method.enabled = false
         })
-        this.saveSettings()
+        await this.saveSettings()
     }
 
     /**
@@ -333,30 +335,99 @@ export class BlockMethodsManager {
      * @param {string} groupKey - ключ группы
      * @param {boolean} enabled - включить или отключить
      */
-    setGroupEnabled(groupKey, enabled) {
+    async setGroupEnabled(groupKey, enabled) {
         Object.values(this.methods).forEach(method => {
             if (method.group === groupKey) {
                 method.enabled = enabled
             }
         })
-        this.saveSettings()
+        await this.saveSettings()
     }
 
     /**
-     * Сохранить настройки в localStorage
+     * Сохранить настройки в БД через API
      */
-    saveSettings() {
-        const settings = {}
-        Object.keys(this.methods).forEach(key => {
-            settings[key] = this.methods[key].enabled
-        })
-        localStorage.setItem('blockMethodsSettings', JSON.stringify(settings))
+    async saveSettings() {
+        try {
+            const settings = {}
+            Object.keys(this.methods).forEach(key => {
+                settings[key] = this.methods[key].enabled
+            })
+
+            console.log('Saving block methods settings:', settings)
+
+            const response = await fetch('/api/v1/settings/block-methods', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({ methods: settings }),
+            })
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('Ошибка сохранения настроек методов:', response.status, errorText)
+                // Fallback: сохраняем в localStorage при ошибке
+                localStorage.setItem('blockMethodsSettings', JSON.stringify(settings))
+                throw new Error(`HTTP ${response.status}: ${errorText}`)
+            }
+
+            const result = await response.json()
+            console.log('Block methods settings saved successfully:', result)
+        } catch (error) {
+            console.error('Ошибка сохранения настроек методов:', error)
+            // Fallback: сохраняем в localStorage при ошибке
+            const settings = {}
+            Object.keys(this.methods).forEach(key => {
+                settings[key] = this.methods[key].enabled
+            })
+            localStorage.setItem('blockMethodsSettings', JSON.stringify(settings))
+            throw error
+        }
     }
 
     /**
-     * Загрузить настройки из localStorage
+     * Загрузить настройки из БД через API
      */
-    loadSettings() {
+    async loadSettingsFromAPI() {
+        try {
+            const response = await fetch('/api/v1/settings/block-methods', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                const settings = data.data || {}
+                
+                // Применяем настройки из БД
+                Object.keys(settings).forEach(key => {
+                    if (this.methods[key]) {
+                        this.methods[key].enabled = settings[key]
+                    }
+                })
+                
+                this.settingsLoaded = true
+            } else {
+                // Fallback: загружаем из localStorage
+                this.loadSettingsFromLocalStorage()
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки настроек методов из API:', error)
+            // Fallback: загружаем из localStorage
+            this.loadSettingsFromLocalStorage()
+        }
+    }
+
+    /**
+     * Загрузить настройки из localStorage (fallback)
+     */
+    loadSettingsFromLocalStorage() {
         try {
             const settings = localStorage.getItem('blockMethodsSettings')
             if (settings) {
@@ -367,19 +438,28 @@ export class BlockMethodsManager {
                     }
                 })
             }
+            this.settingsLoaded = true
         } catch (error) {
-            console.error('Ошибка загрузки настроек методов:', error)
+            console.error('Ошибка загрузки настроек методов из localStorage:', error)
+            this.settingsLoaded = true
         }
+    }
+
+    /**
+     * Загрузить настройки (старый метод для совместимости)
+     */
+    loadSettings() {
+        this.loadSettingsFromAPI()
     }
 
     /**
      * Сбросить настройки к значениям по умолчанию
      */
-    resetSettings() {
+    async resetSettings() {
         Object.values(this.methods).forEach(method => {
             method.enabled = true
         })
-        this.saveSettings()
+        await this.saveSettings()
     }
 }
 

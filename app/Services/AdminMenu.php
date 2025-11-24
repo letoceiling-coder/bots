@@ -101,6 +101,12 @@ class AdminMenu
                 'icon' => 'activity',
                 'roles' => ['admin', 'manager'],
             ],
+            [
+                'title' => 'Пользователи ботов',
+                'route' => 'admin.bot-users',
+                'icon' => 'user-check',
+                'roles' => ['admin', 'manager'],
+            ],
         ]);
 
         if (!$user) {

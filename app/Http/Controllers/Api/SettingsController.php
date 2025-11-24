@@ -257,4 +257,95 @@ class SettingsController extends Controller
             'message' => 'Настройка удалена',
         ]);
     }
+
+    /**
+     * Получить настройки методов блоков
+     */
+    public function getBlockMethods()
+    {
+        $settings = Setting::where('group', 'block_methods')
+            ->where('key', 'like', 'block_method_%')
+            ->get()
+            ->mapWithKeys(function ($setting) {
+                // Извлекаем имя метода из ключа (block_method_sendMessage -> sendMessage)
+                $methodName = str_replace('block_method_', '', $setting->key);
+                return [$methodName => (bool)$setting->value];
+            });
+
+        return response()->json([
+            'data' => $settings,
+        ]);
+    }
+
+    /**
+     * Обновить настройки методов блоков
+     */
+    public function updateBlockMethods(Request $request)
+    {
+        \Log::info('Updating block methods settings', [
+            'request_data' => $request->all(),
+            'methods_count' => count($request->methods ?? []),
+        ]);
+
+        $validator = Validator::make($request->all(), [
+            'methods' => 'required|array',
+            'methods.*' => 'boolean',
+        ]);
+
+        if ($validator->fails()) {
+            \Log::error('Validation failed for block methods update', [
+                'errors' => $validator->errors(),
+            ]);
+            return response()->json([
+                'message' => 'Ошибка валидации',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $updated = [];
+        $errors = [];
+        
+        foreach ($request->methods as $methodName => $enabled) {
+            try {
+                $key = 'block_method_' . $methodName;
+                $setting = Setting::where('key', $key)->first();
+                
+                if ($setting) {
+                    $setting->value = $enabled ? '1' : '0';
+                    $setting->save();
+                    $updated[] = $methodName;
+                } else {
+                    // Создаем новую настройку, если её нет
+                    Setting::create([
+                        'key' => $key,
+                        'value' => $enabled ? '1' : '0',
+                        'type' => 'boolean',
+                        'group' => 'block_methods',
+                        'description' => 'Настройка метода блока: ' . $methodName,
+                    ]);
+                    $updated[] = $methodName;
+                }
+            } catch (\Exception $e) {
+                \Log::error('Error updating block method setting', [
+                    'method' => $methodName,
+                    'error' => $e->getMessage(),
+                ]);
+                $errors[] = $methodName;
+            }
+        }
+
+        \Log::info('Block methods settings updated', [
+            'updated_count' => count($updated),
+            'errors_count' => count($errors),
+        ]);
+
+        return response()->json([
+            'message' => 'Настройки методов блоков обновлены',
+            'data' => [
+                'updated' => $updated,
+                'count' => count($updated),
+                'errors' => $errors,
+            ],
+        ]);
+    }
 }
