@@ -1642,7 +1642,7 @@ class ExtendedTelegraph extends Telegraph
      * @return TelegraphResponse
      * @see https://core.telegram.org/bots/api#setmycommands
      */
-    public function setMyCommands(array $commands, ?array $scope = null, ?string $languageCode = null): TelegraphResponse
+    public function setMyCommands(array $commands, ?array $scope = null, ?string $languageCode = null): array
     {
         $data = [
             'commands' => $commands,

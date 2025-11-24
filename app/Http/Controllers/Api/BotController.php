@@ -1389,12 +1389,16 @@ class BotController extends Controller
             $telegraph = new ExtendedTelegraph();
             $telegraph->setBot($bot);
             
+            $commandsSet = false;
+            
             // Если есть команды, устанавливаем их
             if (!empty($commands)) {
                 // Устанавливаем команды
                 $result = $telegraph->setMyCommands($commands);
-
+                
+                // Проверяем ответ (makeRequest возвращает массив)
                 if (isset($result['ok']) && $result['ok'] === true) {
+                    $commandsSet = true;
                     Log::info('Bot commands set successfully', [
                         'bot_id' => $bot->id,
                         'commands_count' => count($commands),
@@ -1404,37 +1408,46 @@ class BotController extends Controller
                     Log::warning('Failed to set bot commands', [
                         'bot_id' => $bot->id,
                         'result' => $result,
+                        'error_description' => $result['description'] ?? 'Unknown error',
                     ]);
                 }
             } else {
                 Log::info('No commands found in bot blocks', ['bot_id' => $bot->id]);
             }
 
-            // Всегда устанавливаем кнопку меню для отображения команд (даже если команд нет)
-            // Это нужно для того, чтобы кнопка меню отображалась в поле ввода
-            try {
-                // Устанавливаем кнопку меню БЕЗ указания chat_id (для всех пользователей)
-                $menuResult = $telegraph->setChatMenuButtonDirect([
-                    'type' => 'commands',
-                ], null); // null = для всех пользователей
-                
-                // Проверяем ответ (makeRequest возвращает массив)
-                if (isset($menuResult['ok']) && $menuResult['ok'] === true) {
-                    Log::info('Bot menu button set successfully', [
+            // Устанавливаем кнопку меню только если команды установлены успешно
+            // Telegram требует, чтобы команды были установлены перед установкой кнопки меню
+            if ($commandsSet) {
+                try {
+                    // Устанавливаем кнопку меню БЕЗ указания chat_id (для всех пользователей)
+                    $menuResult = $telegraph->setChatMenuButtonDirect([
+                        'type' => 'commands',
+                    ], null); // null = для всех пользователей
+                    
+                    // Проверяем ответ (makeRequest возвращает массив)
+                    if (isset($menuResult['ok']) && $menuResult['ok'] === true) {
+                        Log::info('Bot menu button set successfully', [
+                            'bot_id' => $bot->id,
+                            'has_commands' => !empty($commands),
+                            'commands_count' => count($commands),
+                        ]);
+                    } else {
+                        Log::warning('Failed to set bot menu button', [
+                            'bot_id' => $bot->id,
+                            'result' => $menuResult,
+                            'error_description' => $menuResult['description'] ?? 'Unknown error',
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error setting bot menu button', [
                         'bot_id' => $bot->id,
-                        'has_commands' => !empty($commands),
-                    ]);
-                } else {
-                    Log::warning('Failed to set bot menu button', [
-                        'bot_id' => $bot->id,
-                        'result' => $menuResult,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
                     ]);
                 }
-            } catch (\Exception $e) {
-                Log::error('Error setting bot menu button', [
+            } else {
+                Log::warning('Skipping menu button setup: no commands available', [
                     'bot_id' => $bot->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
                 ]);
             }
         } catch (\Exception $e) {
