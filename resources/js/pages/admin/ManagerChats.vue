@@ -141,11 +141,21 @@
                     </svg>
                 </button>
                 <img
-                    v-if="currentMediaType === 'photo' || currentMediaType === 'animation' || currentMediaType === 'sticker'"
+                    v-if="currentMediaType === 'photo'"
                     :src="currentMediaUrl"
                     alt="Медиа"
                     class="max-w-full max-h-[90vh] rounded-lg"
                     @error="handleImageError"
+                />
+                <video
+                    v-else-if="currentMediaType === 'animation' || currentMediaType === 'sticker'"
+                    :src="currentMediaUrl"
+                    autoplay
+                    loop
+                    muted
+                    playsinline
+                    class="max-w-full max-h-[90vh] rounded-lg"
+                    @error="handleVideoError"
                 />
                 <video
                     v-else-if="currentMediaType === 'video' || currentMediaType === 'video_note'"
@@ -324,7 +334,20 @@
                                 </div>
                                 <!-- GIF/Анимация -->
                                 <div v-else-if="message.message_type === 'animation' && message.telegram_data.animation" class="space-y-2">
+                                    <!-- Используем video для webm анимаций, img для gif -->
+                                    <video
+                                        v-if="isWebmFile(message.telegram_data.animation)"
+                                        :src="getMediaUrl(message.telegram_data.animation.file_id, 'animation')"
+                                        autoplay
+                                        loop
+                                        muted
+                                        playsinline
+                                        class="max-w-md rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                        @click="openMediaViewer(getMediaUrl(message.telegram_data.animation.file_id, 'animation'), 'animation')"
+                                        @error="handleVideoError"
+                                    />
                                     <img
+                                        v-else
                                         :src="getMediaUrl(message.telegram_data.animation.file_id, 'animation')"
                                         :alt="message.telegram_data.animation.file_name || 'GIF'"
                                         class="max-w-md rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
@@ -336,13 +359,16 @@
                                 </div>
                                 <!-- Стикер -->
                                 <div v-else-if="message.message_type === 'sticker' && message.telegram_data.sticker" class="space-y-2">
-                                    <img
+                                    <!-- Стикеры в Telegram обычно webm, используем video -->
+                                    <video
                                         :src="getMediaUrl(message.telegram_data.sticker.file_id, 'sticker')"
-                                        alt="Стикер"
+                                        autoplay
+                                        loop
+                                        muted
+                                        playsinline
                                         class="max-w-xs cursor-pointer hover:opacity-90 transition-opacity"
                                         @click="openMediaViewer(getMediaUrl(message.telegram_data.sticker.file_id, 'sticker'), 'sticker')"
-                                        @error="handleImageError"
-                                        loading="lazy"
+                                        @error="handleVideoError"
                                     />
                                     <p class="text-xs text-muted-foreground">😊 Стикер</p>
                                 </div>
@@ -644,6 +670,16 @@ const getLargestPhotoFileId = (photos) => {
     if (!photos || !Array.isArray(photos) || photos.length === 0) return null
     // Telegram возвращает массив фото разных размеров, берем последнее (самое большое)
     return photos[photos.length - 1].file_id
+}
+
+// Проверка, является ли файл webm (для стикеров и анимаций)
+const isWebmFile = (fileData) => {
+    if (!fileData) return false
+    // Проверяем по mime_type или file_name
+    if (fileData.mime_type && fileData.mime_type.includes('webm')) return true
+    if (fileData.file_name && fileData.file_name.endsWith('.webm')) return true
+    // Стикеры в Telegram обычно webm
+    return false
 }
 
 const getMediaUrl = (fileId, type) => {
