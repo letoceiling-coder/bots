@@ -116,6 +116,9 @@ class BotMapHandler
             return;
         }
 
+        // Проверяем и добавляем дефолтные команды, если их нет
+        $blocks = $this->ensureDefaultCommands($bot, $blocks);
+
         // Определяем текущий блок (для всех типов сообщений, кроме команд)
         $currentBlock = null;
         
@@ -197,6 +200,9 @@ class BotMapHandler
             Log::warning('Bot has no blocks map', ['bot_id' => $bot->id]);
             return;
         }
+
+        // Проверяем и добавляем дефолтные команды, если их нет
+        $blocks = $this->ensureDefaultCommands($bot, $blocks);
 
         // Находим блок по callback_data
         $targetBlock = $this->findBlockByCallbackData($blocks, $callbackData);
@@ -1354,6 +1360,72 @@ class BotMapHandler
         }
 
         return null;
+    }
+
+    /**
+     * Убедиться, что у бота есть дефолтные команды
+     * 
+     * @param Bot $bot
+     * @param array $blocks
+     * @return array
+     */
+    protected function ensureDefaultCommands(Bot $bot, array $blocks): array
+    {
+        $hasStartCommand = false;
+        $hasManagerCommand = false;
+        $maxId = 0;
+
+        foreach ($blocks as $block) {
+            if (isset($block['command'])) {
+                if ($block['command'] === '/start') {
+                    $hasStartCommand = true;
+                }
+                if ($block['command'] === '/manager') {
+                    $hasManagerCommand = true;
+                }
+            }
+            // Находим максимальный ID
+            $blockId = (int)($block['id'] ?? 0);
+            if ($blockId > $maxId) {
+                $maxId = $blockId;
+            }
+        }
+
+        $updated = false;
+
+        // Если есть /start, но нет /manager - добавляем /manager
+        if ($hasStartCommand && !$hasManagerCommand) {
+            $managerBlock = [
+                'id' => (string)($maxId + 1),
+                'label' => '/manager - Связь с менеджером',
+                'type' => 'command',
+                'method' => 'managerChat',
+                'method_data' => [
+                    'text' => '🔔 Вы переключены на связь с менеджером.\n\nОпишите ваш вопрос, и менеджер свяжется с вами в ближайшее время.\n\nДля выхода используйте команды: /exit, /back или /menu',
+                ],
+                'command' => '/manager',
+                'x' => 100,
+                'y' => 250,
+                'nextBlockId' => null,
+            ];
+
+            $blocks[] = $managerBlock;
+            $updated = true;
+
+            Log::info('Auto-added /manager command to bot', [
+                'bot_id' => $bot->id,
+                'new_block_id' => $managerBlock['id'],
+            ]);
+        }
+
+        // Если блоки были обновлены, сохраняем их в БД
+        if ($updated) {
+            $bot->update(['blocks' => $blocks]);
+            // Обновляем кэш бота
+            $bot->refresh();
+        }
+
+        return $blocks;
     }
 }
 

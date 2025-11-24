@@ -1044,9 +1044,66 @@ class BotController extends Controller
     {
         $bot = Bot::findOrFail($id);
         
+        $blocks = $bot->blocks ?? [];
+        
+        // Если блоков нет, возвращаем дефолтные
+        if (empty($blocks)) {
+            $blocks = $this->getDefaultBlocks();
+            // Сохраняем дефолтные блоки в бота
+            $bot->update(['blocks' => $blocks]);
+        } else {
+            // Проверяем наличие команды /manager, если её нет - добавляем
+            $hasManagerCommand = false;
+            $hasStartCommand = false;
+            
+            foreach ($blocks as $block) {
+                if (isset($block['command'])) {
+                    if ($block['command'] === '/manager') {
+                        $hasManagerCommand = true;
+                    }
+                    if ($block['command'] === '/start') {
+                        $hasStartCommand = true;
+                    }
+                }
+            }
+            
+            // Если есть /start, но нет /manager - добавляем /manager
+            if ($hasStartCommand && !$hasManagerCommand) {
+                $maxId = 0;
+                foreach ($blocks as $block) {
+                    $blockId = (int)($block['id'] ?? 0);
+                    if ($blockId > $maxId) {
+                        $maxId = $blockId;
+                    }
+                }
+                
+                $managerBlock = [
+                    'id' => (string)($maxId + 1),
+                    'label' => '/manager - Связь с менеджером',
+                    'type' => 'command',
+                    'method' => 'managerChat',
+                    'method_data' => [
+                        'text' => '🔔 Вы переключены на связь с менеджером.\n\nОпишите ваш вопрос, и менеджер свяжется с вами в ближайшее время.\n\nДля выхода используйте команды: /exit, /back или /menu',
+                    ],
+                    'command' => '/manager',
+                    'x' => 100,
+                    'y' => 250,
+                    'nextBlockId' => null,
+                ];
+                
+                $blocks[] = $managerBlock;
+                $bot->update(['blocks' => $blocks]);
+                
+                Log::info('Auto-added /manager command to existing bot', [
+                    'bot_id' => $bot->id,
+                    'new_block_id' => $managerBlock['id'],
+                ]);
+            }
+        }
+        
         return response()->json([
             'data' => [
-                'blocks' => $bot->blocks ?? [],
+                'blocks' => $blocks,
             ],
         ]);
     }
