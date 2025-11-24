@@ -528,25 +528,72 @@ const formatDuration = (seconds) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-const handleImageError = (event) => {
+const handleImageError = async (event) => {
+    const img = event.target
+    const src = img.src
+    
     console.error('Image load error:', {
-        src: event.target.src,
+        src: src,
         error: event,
     })
-    event.target.style.display = 'none'
+    
+    // Пытаемся получить информацию об ошибке через fetch
+    try {
+        const response = await fetch(src, { method: 'HEAD' })
+        console.error('Image fetch HEAD response:', {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+        })
+        
+        if (!response.ok) {
+            const text = await response.text()
+            console.error('Image fetch error response body:', text.substring(0, 500))
+        }
+    } catch (fetchError) {
+        console.error('Image fetch error:', fetchError)
+    }
+    
+    // Показываем сообщение об ошибке
+    const errorMsg = document.createElement('div')
+    errorMsg.className = 'text-xs text-red-500 mt-2 p-2 bg-red-500/10 rounded'
+    errorMsg.textContent = 'Ошибка загрузки изображения'
+    img.parentNode?.appendChild(errorMsg)
+    img.style.display = 'none'
 }
 
-const handleVideoError = (event) => {
+const handleVideoError = async (event) => {
+    const video = event.target
+    const src = video.src
+    
     console.error('Video load error:', {
-        src: event.target.src,
+        src: src,
         error: event,
         target: event.target,
     })
-    // Показываем сообщение об ошибке вместо скрытия
+    
+    // Пытаемся получить информацию об ошибке через fetch
+    try {
+        const response = await fetch(src, { method: 'HEAD' })
+        console.error('Video fetch HEAD response:', {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+        })
+        
+        if (!response.ok) {
+            const text = await response.text()
+            console.error('Video fetch error response body:', text.substring(0, 500))
+        }
+    } catch (fetchError) {
+        console.error('Video fetch error:', fetchError)
+    }
+    
+    // Показываем сообщение об ошибке
     const errorMsg = document.createElement('div')
-    errorMsg.className = 'text-xs text-red-500 mt-2'
+    errorMsg.className = 'text-xs text-red-500 mt-2 p-2 bg-red-500/10 rounded'
     errorMsg.textContent = 'Ошибка загрузки видео'
-    event.target.parentNode?.appendChild(errorMsg)
+    video.parentNode?.appendChild(errorMsg)
 }
 
 const getLargestPhotoFileId = (photos) => {

@@ -196,7 +196,22 @@ class ManagerChatController extends Controller
             'url' => $request->fullUrl(),
             'path' => $request->path(),
             'query_params' => $request->query(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
         ]);
+        
+        // Если file_id пустой, возвращаем ошибку сразу
+        if (empty($fileId)) {
+            \Log::error('getFile: empty file_id', [
+                'request_path' => $request->path(),
+                'request_url' => $request->fullUrl(),
+            ]);
+            return response()->json([
+                'message' => 'file_id обязателен',
+                'error' => 'Empty file_id',
+            ], 400)
+                ->header('Access-Control-Allow-Origin', '*');
+        }
         
         // Декодируем file_id, так как он может быть закодирован в URL
         // Также проверяем, не был ли он передан как query параметр
