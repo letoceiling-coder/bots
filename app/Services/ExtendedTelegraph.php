@@ -390,8 +390,6 @@ class ExtendedTelegraph extends Telegraph
         if (!isset($this->data)) {
             $this->data = [];
         }
-        }
-        $this->data['text'] = $message;
         
         return $this;
     }
