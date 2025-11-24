@@ -140,11 +140,18 @@ class ExtendedTelegraph extends Telegraph
         // Устанавливаем HTML парсинг по умолчанию, если не указан другой режим
         if (!isset($data['parse_mode']) && isset($data['text'])) {
             $data['parse_mode'] = 'HTML';
-            // Конвертируем \n в <br> для HTML парсинга
+            // Конвертируем буквальные \n (обратный слэш + n) в реальные переносы строк
+            $data['text'] = str_replace('\\n', "\n", $data['text']);
+            // Конвертируем реальные \n в <br> для HTML парсинга
             $data['text'] = str_replace("\n", "<br>", $data['text']);
         } elseif (isset($data['parse_mode']) && $data['parse_mode'] === 'HTML' && isset($data['text'])) {
-            // Если уже установлен HTML режим, конвертируем \n в <br>
+            // Если уже установлен HTML режим, конвертируем буквальные \n в реальные переносы строк
+            $data['text'] = str_replace('\\n', "\n", $data['text']);
+            // Конвертируем реальные \n в <br>
             $data['text'] = str_replace("\n", "<br>", $data['text']);
+        } elseif (isset($data['text'])) {
+            // Для других режимов парсинга тоже конвертируем буквальные \n в реальные переносы строк
+            $data['text'] = str_replace('\\n', "\n", $data['text']);
         }
         
         // Добавляем chat_id если он установлен через chat() метод
