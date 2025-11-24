@@ -7,6 +7,7 @@ use App\Models\BotSession;
 use App\Models\BotSessionStep;
 use App\Models\BotSessionFile;
 use App\Models\BotSessionData;
+use App\Models\BotUser;
 use Illuminate\Support\Facades\Log;
 
 class BotSessionService
@@ -67,6 +68,9 @@ class BotSessionService
                 'chat_id' => $chatId,
             ]);
         }
+
+        // Автоматически создаем или обновляем пользователя бота
+        $this->syncBotUser($bot, $chatId, $userData);
 
         return $session;
     }
@@ -184,6 +188,89 @@ class BotSessionService
         ]);
 
         return $file;
+    }
+
+    /**
+     * Синхронизировать пользователя бота (создать или обновить)
+     */
+    protected function syncBotUser(Bot $bot, string $chatId, array $userData = []): void
+    {
+        // Используем user_id из userData, если он есть, иначе используем chat_id
+        // В Telegram user_id и chat_id могут совпадать для личных чатов
+        $telegramUserId = isset($userData['id']) ? (string)$userData['id'] : $chatId;
+
+        if (empty($telegramUserId)) {
+            Log::warning('Cannot sync bot user: telegram_user_id is empty', [
+                'bot_id' => $bot->id,
+                'chat_id' => $chatId,
+                'user_data' => $userData,
+            ]);
+            return;
+        }
+
+        try {
+            $botUser = BotUser::where('bot_id', $bot->id)
+                ->where('telegram_user_id', $telegramUserId)
+                ->first();
+
+            if ($botUser) {
+                // Обновляем существующего пользователя (но не меняем роль, если она была установлена вручную)
+                $updateData = [
+                    'chat_id' => $chatId,
+                ];
+
+                // Обновляем username, если он изменился
+                if (isset($userData['username'])) {
+                    $updateData['username'] = $userData['username'];
+                }
+
+                // Обновляем имя, если оно изменилось
+                if (isset($userData['first_name'])) {
+                    $updateData['first_name'] = $userData['first_name'];
+                }
+
+                // Обновляем фамилию, если она изменилась
+                if (isset($userData['last_name'])) {
+                    $updateData['last_name'] = $userData['last_name'];
+                }
+
+                $botUser->update($updateData);
+
+                Log::debug('Bot user updated', [
+                    'bot_user_id' => $botUser->id,
+                    'bot_id' => $bot->id,
+                    'telegram_user_id' => $telegramUserId,
+                    'role' => $botUser->role,
+                ]);
+            } else {
+                // Создаем нового пользователя с ролью "user" по умолчанию
+                $botUser = BotUser::create([
+                    'bot_id' => $bot->id,
+                    'telegram_user_id' => $telegramUserId,
+                    'chat_id' => $chatId,
+                    'username' => $userData['username'] ?? null,
+                    'first_name' => $userData['first_name'] ?? null,
+                    'last_name' => $userData['last_name'] ?? null,
+                    'role' => 'user', // Роль по умолчанию
+                ]);
+
+                Log::info('Bot user created automatically', [
+                    'bot_user_id' => $botUser->id,
+                    'bot_id' => $bot->id,
+                    'telegram_user_id' => $telegramUserId,
+                    'chat_id' => $chatId,
+                    'role' => 'user',
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error syncing bot user', [
+                'bot_id' => $bot->id,
+                'chat_id' => $chatId,
+                'telegram_user_id' => $telegramUserId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
     }
 }
 
