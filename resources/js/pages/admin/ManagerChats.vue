@@ -539,16 +539,38 @@ const handleImageError = async (event) => {
     
     // Пытаемся получить информацию об ошибке через fetch
     try {
-        const response = await fetch(src, { method: 'HEAD' })
+        // Сначала HEAD запрос
+        const headResponse = await fetch(src, { method: 'HEAD' })
         console.error('Image fetch HEAD response:', {
-            status: response.status,
-            statusText: response.statusText,
-            headers: Object.fromEntries(response.headers.entries()),
+            status: headResponse.status,
+            statusText: headResponse.statusText,
+            headers: Object.fromEntries(headResponse.headers.entries()),
         })
         
-        if (!response.ok) {
-            const text = await response.text()
-            console.error('Image fetch error response body:', text.substring(0, 500))
+        // Затем GET запрос для получения тела ответа
+        const getResponse = await fetch(src, { method: 'GET' })
+        console.error('Image fetch GET response:', {
+            status: getResponse.status,
+            statusText: getResponse.statusText,
+            headers: Object.fromEntries(getResponse.headers.entries()),
+        })
+        
+        // Проверяем Content-Type
+        const contentType = getResponse.headers.get('Content-Type')
+        console.error('Image Content-Type:', contentType)
+        
+        // Пытаемся прочитать первые байты ответа
+        const blob = await getResponse.blob()
+        console.error('Image response blob:', {
+            size: blob.size,
+            type: blob.type,
+            firstBytes: await blob.slice(0, 100).text().catch(() => 'Cannot read as text'),
+        })
+        
+        // Если это JSON (ошибка), читаем его
+        if (contentType && contentType.includes('application/json')) {
+            const text = await getResponse.text()
+            console.error('Image response is JSON (error):', text)
         }
     } catch (fetchError) {
         console.error('Image fetch error:', fetchError)
@@ -574,16 +596,38 @@ const handleVideoError = async (event) => {
     
     // Пытаемся получить информацию об ошибке через fetch
     try {
-        const response = await fetch(src, { method: 'HEAD' })
+        // Сначала HEAD запрос
+        const headResponse = await fetch(src, { method: 'HEAD' })
         console.error('Video fetch HEAD response:', {
-            status: response.status,
-            statusText: response.statusText,
-            headers: Object.fromEntries(response.headers.entries()),
+            status: headResponse.status,
+            statusText: headResponse.statusText,
+            headers: Object.fromEntries(headResponse.headers.entries()),
         })
         
-        if (!response.ok) {
-            const text = await response.text()
-            console.error('Video fetch error response body:', text.substring(0, 500))
+        // Затем GET запрос для получения тела ответа
+        const getResponse = await fetch(src, { method: 'GET' })
+        console.error('Video fetch GET response:', {
+            status: getResponse.status,
+            statusText: getResponse.statusText,
+            headers: Object.fromEntries(getResponse.headers.entries()),
+        })
+        
+        // Проверяем Content-Type
+        const contentType = getResponse.headers.get('Content-Type')
+        console.error('Video Content-Type:', contentType)
+        
+        // Пытаемся прочитать первые байты ответа
+        const blob = await getResponse.blob()
+        console.error('Video response blob:', {
+            size: blob.size,
+            type: blob.type,
+            firstBytes: await blob.slice(0, 100).text().catch(() => 'Cannot read as text'),
+        })
+        
+        // Если это JSON (ошибка), читаем его
+        if (contentType && contentType.includes('application/json')) {
+            const text = await getResponse.text()
+            console.error('Video response is JSON (error):', text)
         }
     } catch (fetchError) {
         console.error('Video fetch error:', fetchError)

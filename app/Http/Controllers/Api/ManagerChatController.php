@@ -388,20 +388,40 @@ class ManagerChatController extends Controller
                         ];
                         $contentType = $contentTypeMap[strtolower($extension)] ?? $fileContent->header('Content-Type') ?? 'application/octet-stream';
                         
+                        $body = $fileContent->body();
+                        $bodySize = strlen($body);
+                        
                         \Log::info('getFile: file fetched successfully, returning response', [
                             'file_id' => $fileId,
                             'file_path' => $filePath,
                             'content_type' => $contentType,
-                            'size' => strlen($fileContent->body()),
+                            'size' => $bodySize,
+                            'first_bytes' => substr($body, 0, 20),
                         ]);
                         
-                        return response($fileContent->body(), 200)
+                        // Проверяем, что тело ответа не пустое
+                        if (empty($body)) {
+                            \Log::error('getFile: empty response body', [
+                                'file_id' => $fileId,
+                                'file_path' => $filePath,
+                                'file_url' => $fileUrl,
+                            ]);
+                            return response()->json([
+                                'message' => 'Пустое тело ответа от Telegram',
+                                'file_id' => $fileId,
+                            ], 500)
+                                ->header('Access-Control-Allow-Origin', '*');
+                        }
+                        
+                        return response($body, 200)
                             ->header('Content-Type', $contentType)
+                            ->header('Content-Length', $bodySize)
                             ->header('Content-Disposition', 'inline')
                             ->header('Cache-Control', 'public, max-age=3600')
                             ->header('Access-Control-Allow-Origin', '*')
                             ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-                            ->header('Access-Control-Allow-Headers', 'Content-Type');
+                            ->header('Access-Control-Allow-Headers', 'Content-Type')
+                            ->header('Accept-Ranges', 'bytes');
                     } else {
                         \Log::error('getFile: failed to fetch file content from Telegram', [
                             'file_url' => $fileUrl,
