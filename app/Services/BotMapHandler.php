@@ -390,6 +390,7 @@ class BotMapHandler
                         ]);
                     }
                     return;
+                    }
                 }
             }
 
