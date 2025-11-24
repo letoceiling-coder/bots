@@ -411,6 +411,22 @@ class ExtendedTelegraph extends Telegraph
     }
 
     /**
+     * Удалить reply keyboard
+     * 
+     * @return $this
+     */
+    public function removeKeyboard(): self
+    {
+        if (!isset($this->data)) {
+            $this->data = [];
+        }
+        $this->data['reply_markup'] = [
+            'remove_keyboard' => true,
+        ];
+        return $this;
+    }
+
+    /**
      * Установить inline клавиатуру
      * Метод отсутствует в родительском классе, поэтому реализован здесь
      * 

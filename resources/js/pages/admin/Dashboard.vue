@@ -7,7 +7,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div class="bg-card rounded-lg border border-border p-6">
                 <h2 class="text-lg font-semibold mb-2">Статистика</h2>
-                <p class="text-muted-foreground">Здесь будет статистика</p>
+                <p class="text-muted-foreground">Модуль не подключен</p>
             </div>
         </div>
     </div>

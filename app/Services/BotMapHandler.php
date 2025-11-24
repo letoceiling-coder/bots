@@ -253,6 +253,17 @@ class BotMapHandler
         // Проверяем и добавляем дефолтные команды, если их нет
         $blocks = $this->ensureDefaultCommands($bot, $blocks);
 
+        // Если callback_data начинается с "/", обрабатываем как команду
+        if (str_starts_with($callbackData, '/')) {
+            Log::info('Callback_data is a command, handling as command', [
+                'bot_id' => $bot->id,
+                'callback_data' => $callbackData,
+                'chat_id' => $chatId,
+            ]);
+            $this->handleCommand($bot, $session, $blocks, $callbackData);
+            return;
+        }
+
         // Находим блок по callback_data
         $targetBlock = $this->findBlockByCallbackData($blocks, $callbackData);
 
@@ -737,7 +748,19 @@ class BotMapHandler
                     ]);
                     // Обновляем сессию в памяти
                     $session->refresh();
-                    $result = $telegraph->message($botResponse)->send();
+                    
+                    // Создаем reply keyboard с командами для выхода
+                    $exitKeyboard = [
+                        [
+                            ['text' => '/exit'],
+                            ['text' => '/back'],
+                            ['text' => '/menu'],
+                        ],
+                    ];
+                    
+                    $result = $telegraph->message($botResponse)
+                        ->keyboard($exitKeyboard)
+                        ->send();
                     
                     Log::info('Switched session to manager_chat mode', [
                         'session_id' => $session->id,
@@ -1338,9 +1361,10 @@ class BotMapHandler
 
         $telegraph = $this->telegramService->bot($bot);
 
-        // Отправляем сообщение пользователю
+        // Отправляем сообщение пользователю и удаляем клавиатуру
         $telegraph->chat($session->chat_id)
             ->message("✅ Вы вышли из режима чата с менеджером.\n\nИспользуйте /start для возврата в главное меню.")
+            ->removeKeyboard()
             ->send();
 
         // Уведомляем менеджеров
