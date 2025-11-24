@@ -1052,31 +1052,56 @@ class BotController extends Controller
             // Сохраняем дефолтные блоки в бота
             $bot->update(['blocks' => $blocks]);
         } else {
-            // Проверяем наличие команды /manager, если её нет - добавляем
+            // Проверяем наличие команды /manager и блока меню с кнопкой
             $hasManagerCommand = false;
             $hasStartCommand = false;
+            $hasManagerButtonInMenu = false;
+            $managerBlockId = null;
+            $menuBlock = null;
             
+            // Находим максимальный ID
+            $maxId = 0;
             foreach ($blocks as $block) {
+                $blockId = (int)($block['id'] ?? 0);
+                if ($blockId > $maxId) {
+                    $maxId = $blockId;
+                }
+                
+                // Проверяем команды
                 if (isset($block['command'])) {
                     if ($block['command'] === '/manager') {
                         $hasManagerCommand = true;
+                        $managerBlockId = $block['id'];
                     }
                     if ($block['command'] === '/start') {
                         $hasStartCommand = true;
                     }
                 }
-            }
-            
-            // Если есть /start, но нет /manager - добавляем /manager
-            if ($hasStartCommand && !$hasManagerCommand) {
-                $maxId = 0;
-                foreach ($blocks as $block) {
-                    $blockId = (int)($block['id'] ?? 0);
-                    if ($blockId > $maxId) {
-                        $maxId = $blockId;
+                
+                // Ищем блок меню (inlineKeyboard) после /start
+                if ($block['method'] === 'inlineKeyboard' && !$menuBlock) {
+                    $menuBlock = $block;
+                    // Проверяем, есть ли уже кнопка "Связь с менеджером"
+                    $methodData = $block['method_data'] ?? $block['methodData'] ?? [];
+                    $inlineKeyboard = $methodData['inline_keyboard'] ?? [];
+                    foreach ($inlineKeyboard as $row) {
+                        foreach ($row as $button) {
+                            if (isset($button['text']) && 
+                                (stripos($button['text'], 'менеджер') !== false || 
+                                 stripos($button['text'], 'manager') !== false ||
+                                 $button['callback_data'] === 'manager_chat')) {
+                                $hasManagerButtonInMenu = true;
+                                break 2;
+                            }
+                        }
                     }
                 }
-                
+            }
+            
+            $updated = false;
+            
+            // Если есть /start, но нет /manager команды - добавляем /manager
+            if ($hasStartCommand && !$hasManagerCommand) {
                 $managerBlock = [
                     'id' => (string)($maxId + 1),
                     'label' => '/manager - Связь с менеджером',
@@ -1092,12 +1117,162 @@ class BotController extends Controller
                 ];
                 
                 $blocks[] = $managerBlock;
-                $bot->update(['blocks' => $blocks]);
+                $managerBlockId = $managerBlock['id'];
+                $maxId++;
+                $updated = true;
                 
                 Log::info('Auto-added /manager command to existing bot', [
                     'bot_id' => $bot->id,
                     'new_block_id' => $managerBlock['id'],
                 ]);
+            }
+            
+            // Если есть /start, но нет меню - создаем меню с кнопкой "Связь с менеджером"
+            if ($hasStartCommand && !$menuBlock) {
+                // Находим блок /start
+                $startBlock = null;
+                foreach ($blocks as $block) {
+                    if (isset($block['command']) && $block['command'] === '/start') {
+                        $startBlock = $block;
+                        break;
+                    }
+                }
+                
+                if ($startBlock) {
+                    // Создаем блок меню
+                    $menuBlockId = (string)($maxId + 1);
+                    $maxId++;
+                    
+                    // Убеждаемся, что есть блок менеджера
+                    if (!$managerBlockId) {
+                        $managerBlockId = (string)($maxId + 1);
+                        $maxId++;
+                        $managerBlock = [
+                            'id' => $managerBlockId,
+                            'label' => 'Связь с менеджером',
+                            'type' => 'block',
+                            'method' => 'managerChat',
+                            'method_data' => [
+                                'text' => '🔔 Вы переключены на связь с менеджером.\n\nОпишите ваш вопрос, и менеджер свяжется с вами в ближайшее время.\n\nДля выхода используйте команды: /exit, /back или /menu',
+                            ],
+                            'x' => 400,
+                            'y' => 100,
+                            'nextBlockId' => null,
+                        ];
+                        $blocks[] = $managerBlock;
+                        $updated = true;
+                    }
+                    
+                    // Создаем блок меню
+                    $menuBlock = [
+                        'id' => $menuBlockId,
+                        'label' => 'Главное меню',
+                        'type' => 'block',
+                        'method' => 'inlineKeyboard',
+                        'method_data' => [
+                            'text' => 'Выберите раздел:',
+                            'inline_keyboard' => [
+                                [
+                                    [
+                                        'text' => '💬 Связь с менеджером',
+                                        'callback_data' => 'manager_chat',
+                                        'target_block_id' => $managerBlockId,
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'x' => 250,
+                        'y' => 100,
+                        'nextBlockId' => null,
+                    ];
+                    $blocks[] = $menuBlock;
+                    
+                    // Обновляем /start, чтобы он вел на меню
+                    foreach ($blocks as &$block) {
+                        if ($block['id'] === $startBlock['id']) {
+                            $block['nextBlockId'] = $menuBlockId;
+                            break;
+                        }
+                    }
+                    unset($block);
+                    
+                    $updated = true;
+                    
+                    Log::info('Auto-created menu with manager button', [
+                        'bot_id' => $bot->id,
+                        'menu_block_id' => $menuBlockId,
+                        'manager_block_id' => $managerBlockId,
+                    ]);
+                }
+            }
+            
+            // Если есть меню, но нет кнопки "Связь с менеджером" - добавляем
+            if ($menuBlock && !$hasManagerButtonInMenu) {
+                $methodData = $menuBlock['method_data'] ?? $menuBlock['methodData'] ?? [];
+                $inlineKeyboard = $methodData['inline_keyboard'] ?? [];
+                
+                // Если меню пустое, создаем первый ряд
+                if (empty($inlineKeyboard)) {
+                    $inlineKeyboard = [[]];
+                }
+                
+                // Добавляем кнопку "Связь с менеджером" в первый ряд
+                $managerButton = [
+                    'text' => '💬 Связь с менеджером',
+                    'callback_data' => 'manager_chat',
+                ];
+                
+                // Если есть блок менеджера, используем его ID как target_block_id
+                if ($managerBlockId) {
+                    $managerButton['target_block_id'] = $managerBlockId;
+                } else {
+                    // Иначе создаем новый блок менеджера
+                    $managerBlockId = (string)($maxId + 1);
+                    $managerBlock = [
+                        'id' => $managerBlockId,
+                        'label' => 'Связь с менеджером',
+                        'type' => 'block',
+                        'method' => 'managerChat',
+                        'method_data' => [
+                            'text' => '🔔 Вы переключены на связь с менеджером.\n\nОпишите ваш вопрос, и менеджер свяжется с вами в ближайшее время.\n\nДля выхода используйте команды: /exit, /back или /menu',
+                        ],
+                        'x' => 400,
+                        'y' => 100,
+                        'nextBlockId' => null,
+                    ];
+                    $blocks[] = $managerBlock;
+                    $managerButton['target_block_id'] = $managerBlockId;
+                    $maxId++;
+                    $updated = true;
+                }
+                
+                $inlineKeyboard[0][] = $managerButton;
+                $methodData['inline_keyboard'] = $inlineKeyboard;
+                
+                // Обновляем блок меню
+                foreach ($blocks as &$block) {
+                    if ($block['id'] === $menuBlock['id']) {
+                        $block['method_data'] = $methodData;
+                        if (isset($block['methodData'])) {
+                            unset($block['methodData']);
+                        }
+                        break;
+                    }
+                }
+                unset($block);
+                
+                $updated = true;
+                
+                Log::info('Auto-added manager button to menu', [
+                    'bot_id' => $bot->id,
+                    'menu_block_id' => $menuBlock['id'],
+                    'manager_block_id' => $managerBlockId,
+                ]);
+            }
+            
+            // Сохраняем изменения, если были обновления
+            if ($updated) {
+                $bot->update(['blocks' => $blocks]);
             }
         }
         
@@ -1127,10 +1302,43 @@ class BotController extends Controller
                 'command' => '/start',
                 'x' => 100,
                 'y' => 100,
-                'nextBlockId' => null,
+                'nextBlockId' => '2',
             ],
             [
                 'id' => '2',
+                'label' => 'Главное меню',
+                'type' => 'block',
+                'method' => 'inlineKeyboard',
+                'method_data' => [
+                    'text' => 'Выберите раздел:',
+                    'inline_keyboard' => [
+                        [
+                            [
+                                'text' => '💬 Связь с менеджером',
+                                'callback_data' => 'manager_chat',
+                                'target_block_id' => '3',
+                            ],
+                        ],
+                    ],
+                ],
+                'x' => 250,
+                'y' => 100,
+                'nextBlockId' => null,
+            ],
+            [
+                'id' => '3',
+                'label' => 'Связь с менеджером',
+                'type' => 'block',
+                'method' => 'managerChat',
+                'method_data' => [
+                    'text' => '🔔 Вы переключены на связь с менеджером.\n\nОпишите ваш вопрос, и менеджер свяжется с вами в ближайшее время.\n\nДля выхода используйте команды: /exit, /back или /menu',
+                ],
+                'x' => 400,
+                'y' => 100,
+                'nextBlockId' => null,
+            ],
+            [
+                'id' => '4',
                 'label' => '/manager - Связь с менеджером',
                 'type' => 'command',
                 'method' => 'managerChat',
