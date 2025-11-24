@@ -180,6 +180,23 @@ class ManagerChatController extends Controller
      */
     public function getFile(Request $request, string $fileId)
     {
+        // Декодируем file_id, так как он может быть закодирован в URL
+        // Также проверяем, не был ли он передан как query параметр
+        if (empty($fileId) && $request->has('file_id')) {
+            $fileId = $request->get('file_id');
+        }
+        $fileId = urldecode($fileId);
+        
+        \Log::info('getFile: request received', [
+            'file_id' => $fileId,
+            'file_id_length' => strlen($fileId),
+            'file_id_encoded' => urlencode($fileId),
+            'bot_id' => $request->get('bot_id'),
+            'session_id' => $request->get('session_id'),
+            'redirect' => $request->get('redirect'),
+            'all_params' => $request->all(),
+        ]);
+        
         try {
             $botId = $request->get('bot_id');
             $sessionId = $request->get('session_id');
@@ -237,9 +254,34 @@ class ManagerChatController extends Controller
             $telegraph = new \App\Services\ExtendedTelegraph();
             $telegraph->setBot($bot);
             
-            // Получаем информацию о файле
-            $fileInfo = $telegraph->makeRequest('getFile', [
+            \Log::info('getFile: calling Telegram getFile API', [
                 'file_id' => $fileId,
+                'bot_id' => $bot->id,
+                'file_id_length' => strlen($fileId),
+            ]);
+            
+            // Получаем информацию о файле
+            try {
+                $fileInfo = $telegraph->makeRequest('getFile', [
+                    'file_id' => $fileId,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('getFile: exception calling makeRequest', [
+                    'file_id' => $fileId,
+                    'bot_id' => $bot->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                return response()->json([
+                    'message' => 'Ошибка при запросе к Telegram API',
+                    'error' => $e->getMessage(),
+                ], 500);
+            }
+
+            \Log::info('getFile: Telegram API response', [
+                'file_id' => $fileId,
+                'ok' => $fileInfo['ok'] ?? false,
+                'result' => $fileInfo['result'] ?? null,
             ]);
 
             if (!isset($fileInfo['ok']) || !$fileInfo['ok']) {
@@ -247,6 +289,8 @@ class ManagerChatController extends Controller
                     'file_id' => $fileId,
                     'bot_id' => $bot->id,
                     'error' => $fileInfo['description'] ?? 'Unknown error',
+                    'error_code' => $fileInfo['error_code'] ?? null,
+                    'full_response' => $fileInfo,
                 ]);
                 return response()->json([
                     'message' => 'Ошибка получения файла из Telegram',
@@ -296,6 +340,13 @@ class ManagerChatController extends Controller
                         ];
                         $contentType = $contentTypeMap[strtolower($extension)] ?? $fileContent->header('Content-Type') ?? 'application/octet-stream';
                         
+                        \Log::info('getFile: file fetched successfully', [
+                            'file_id' => $fileId,
+                            'file_path' => $filePath,
+                            'content_type' => $contentType,
+                            'size' => strlen($fileContent->body()),
+                        ]);
+                        
                         return response($fileContent->body(), 200)
                             ->header('Content-Type', $contentType)
                             ->header('Content-Disposition', 'inline')
@@ -304,8 +355,9 @@ class ManagerChatController extends Controller
                     } else {
                         \Log::error('getFile: failed to fetch file content', [
                             'file_url' => $fileUrl,
+                            'file_id' => $fileId,
                             'status' => $fileContent->status(),
-                            'response' => $fileContent->body(),
+                            'response' => substr($fileContent->body(), 0, 500), // Первые 500 символов
                         ]);
                     }
                 } catch (\Exception $e) {

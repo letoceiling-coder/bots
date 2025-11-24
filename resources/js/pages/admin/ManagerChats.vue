@@ -219,6 +219,7 @@
                                 <div v-if="message.message_type === 'photo' && message.telegram_data.photo" class="space-y-2">
                                     <div class="relative">
                                         <img
+                                            v-if="getLargestPhotoFileId(message.telegram_data.photo)"
                                             :src="getMediaUrl(getLargestPhotoFileId(message.telegram_data.photo), 'photo')"
                                             alt="Фото"
                                             class="max-w-md rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
@@ -226,19 +227,27 @@
                                             @error="handleImageError"
                                             loading="lazy"
                                         />
+                                        <div v-else class="p-4 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                                            Фото недоступно (file_id не найден)
+                                        </div>
                                     </div>
                                     <p v-if="message.telegram_data.caption" class="text-xs text-muted-foreground italic">{{ message.telegram_data.caption }}</p>
                                 </div>
                                 <!-- Видео -->
                                 <div v-else-if="message.message_type === 'video' && message.telegram_data.video" class="space-y-2">
                                     <video
+                                        v-if="message.telegram_data.video.file_id"
                                         :src="getMediaUrl(message.telegram_data.video.file_id, 'video')"
                                         controls
                                         class="max-w-md rounded-lg"
                                         @error="handleVideoError"
+                                        preload="metadata"
                                     >
                                         Ваш браузер не поддерживает видео.
                                     </video>
+                                    <div v-else class="p-4 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                                        Видео недоступно (file_id не найден)
+                                    </div>
                                     <div class="text-xs text-muted-foreground">
                                         <p>🎥 {{ message.telegram_data.video.file_name || 'Видео файл' }}</p>
                                         <p v-if="message.telegram_data.video.file_size">Размер: {{ formatFileSize(message.telegram_data.video.file_size) }}</p>
@@ -520,11 +529,24 @@ const formatDuration = (seconds) => {
 }
 
 const handleImageError = (event) => {
+    console.error('Image load error:', {
+        src: event.target.src,
+        error: event,
+    })
     event.target.style.display = 'none'
 }
 
 const handleVideoError = (event) => {
-    console.error('Video load error:', event)
+    console.error('Video load error:', {
+        src: event.target.src,
+        error: event,
+        target: event.target,
+    })
+    // Показываем сообщение об ошибке вместо скрытия
+    const errorMsg = document.createElement('div')
+    errorMsg.className = 'text-xs text-red-500 mt-2'
+    errorMsg.textContent = 'Ошибка загрузки видео'
+    event.target.parentNode?.appendChild(errorMsg)
 }
 
 const getLargestPhotoFileId = (photos) => {
@@ -534,11 +556,37 @@ const getLargestPhotoFileId = (photos) => {
 }
 
 const getMediaUrl = (fileId, type) => {
-    if (!fileId || !selectedDialogue.value?.session?.id) return null
+    if (!fileId) {
+        console.warn('getMediaUrl: missing fileId', { type })
+        return null
+    }
+    
+    if (!selectedDialogue.value?.session?.id) {
+        console.warn('getMediaUrl: missing session', {
+            fileId,
+            type,
+        })
+        return null
+    }
+    
     // Используем прокси endpoint для получения файла
     // Для изображений и видео используем прямой URL через прокси
     const baseUrl = window.location.origin
-    return `${baseUrl}/api/v1/manager-chats/file/${fileId}?session_id=${selectedDialogue.value.session.id}&redirect=1`
+    // Кодируем file_id для безопасной передачи в URL
+    const encodedFileId = encodeURIComponent(fileId)
+    const url = `${baseUrl}/api/v1/manager-chats/file/${encodedFileId}?session_id=${selectedDialogue.value.session.id}&redirect=1`
+    
+    // Логируем только в режиме разработки
+    if (import.meta.env.DEV) {
+        console.log('getMediaUrl:', { 
+            fileId: fileId.substring(0, 50) + '...', 
+            encodedFileId: encodedFileId.substring(0, 50) + '...', 
+            url: url.substring(0, 100) + '...', 
+            type 
+        })
+    }
+    
+    return url
 }
 
 const openMediaViewer = (url, type) => {
