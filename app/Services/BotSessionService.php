@@ -23,9 +23,10 @@ class BotSessionService
             'user_data' => $userData,
         ]);
 
+        // Ищем сессию независимо от статуса (может быть active или manager_chat)
         $session = BotSession::where('bot_id', $bot->id)
             ->where('chat_id', $chatId)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'manager_chat'])
             ->latest('last_activity_at')
             ->first();
 
@@ -38,7 +39,7 @@ class BotSessionService
             $session = BotSession::create([
                 'bot_id' => $bot->id,
                 'chat_id' => $chatId,
-                'user_id' => $userData['id'] ?? null,
+                'telegram_user_id' => $userData['id'] ?? null,
                 'username' => $userData['username'] ?? null,
                 'first_name' => $userData['first_name'] ?? null,
                 'last_name' => $userData['last_name'] ?? null,
@@ -51,21 +52,26 @@ class BotSessionService
                 'session_id' => $session->id,
                 'bot_id' => $bot->id,
                 'chat_id' => $chatId,
+                'status' => $session->status,
             ]);
         } else {
             // Обновляем данные пользователя, если изменились
-            $session->update([
-                'user_id' => $userData['id'] ?? $session->user_id,
+            // НО НЕ меняем статус, если он уже установлен (например, manager_chat)
+            $updateData = [
+                'telegram_user_id' => $userData['id'] ?? $session->telegram_user_id,
                 'username' => $userData['username'] ?? $session->username,
                 'first_name' => $userData['first_name'] ?? $session->first_name,
                 'last_name' => $userData['last_name'] ?? $session->last_name,
-            ]);
+            ];
+            
+            $session->update($updateData);
             $session->touchActivity();
 
             Log::debug('Using existing bot session', [
                 'session_id' => $session->id,
                 'bot_id' => $bot->id,
                 'chat_id' => $chatId,
+                'status' => $session->status,
             ]);
         }
 

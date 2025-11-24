@@ -125,8 +125,15 @@ class BotMapHandler
         // Обновляем сессию из БД, чтобы получить актуальный статус
         $session->refresh();
         
+        Log::info('Checking session status for manager_chat', [
+            'session_id' => $session->id,
+            'chat_id' => $chatId,
+            'status' => $session->status,
+            'telegram_user_id' => $telegramUserId,
+        ]);
+        
         if ($session->status === 'manager_chat') {
-            Log::info('Session is in manager_chat mode', [
+            Log::info('Session is in manager_chat mode, forwarding to managers', [
                 'session_id' => $session->id,
                 'chat_id' => $chatId,
                 'status' => $session->status,
@@ -1238,6 +1245,10 @@ class BotMapHandler
             return;
         }
 
+        // Определяем тип сообщения и текст для сохранения
+        $messageType = $this->detectMessageType($message);
+        $messageText = $this->extractMessageText($message);
+
         Log::info('Forwarding manager message to user', [
             'bot_id' => $bot->id,
             'manager_id' => $manager->id,
@@ -1248,10 +1259,6 @@ class BotMapHandler
 
         $telegraph = $this->telegramService->bot($bot);
         $forwardedMessageId = null;
-
-        // Определяем тип сообщения и текст для сохранения
-        $messageType = $this->detectMessageType($message);
-        $messageText = $this->extractMessageText($message);
 
         try {
             // Пытаемся переслать сообщение через forwardMessage (работает для всех типов медиа)
